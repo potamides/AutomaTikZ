@@ -1,0 +1,5 @@
+beautifulsoup4==4.11.2
+Markdown==3.4.1
+datasets==2.9.0
+PyYAML==6.0
+spacy==3.5.1
