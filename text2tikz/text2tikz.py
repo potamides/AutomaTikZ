@@ -51,11 +51,11 @@ class TikZConfig(builder.BuilderConfig):
         }
         self.generators = {
             "PetarV-/TikZ": petarv_tikz.load,
-            #"janosh/tikz": janosh_tikz.load,
-            #"texample.net": texample_net.load,
-            #"tikz.net": tikz_net.load,
-            #"pgfplots.net": tikz_net.load, # tikz.net downloader also works for this site
-            #"tex.stackexchange.com": tex_stackexchange_com.TeXExchangeParser
+            "janosh/tikz": janosh_tikz.load,
+            "texample.net": texample_net.load,
+            "tikz.net": tikz_net.load,
+            "pgfplots.net": tikz_net.load, # tikz.net downloader also works for this site
+            "tex.stackexchange.com": tex_stackexchange_com.TeXExchangeParser
         }
         self.prompts = {
             "PetarV-/TikZ": PROMPT_TEMPLATES["example"],
