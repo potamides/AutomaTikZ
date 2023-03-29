@@ -3,3 +3,6 @@ Markdown==3.4.1
 datasets==2.9.0
 PyYAML==6.0
 spacy==3.5.1
+transformers @ https://github.com/huggingface/transformers/archive/32ff06403d48fa018a33ccab02a5f9d3eb8b078b.zip
+torch==2.0.0
+sentencepiece==0.1.97

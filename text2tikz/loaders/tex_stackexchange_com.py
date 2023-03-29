@@ -54,19 +54,17 @@ def trim_attribs(elem_attribs, attrib_type="question"):
         raise Exception('Unrecognized attribute type - please specify either question or answer')
 
 def extract_code(soup):
-    # first search for whole documents and then tikzpictures only
-    for patterns in [[r"\documentclass", r"\end{document"], [r"\begin{tikzpicture}", r"\end{tikzpicture"]]:
-        # last code snippet first
-        for formatted in reversed(soup.find_all("pre")):
-            if code := formatted.code:
-                if all(pattern in code.text for pattern in patterns):
-                    return code
+    patterns = [r"\documentclass", r"\end{document}", r"\begin{tikzpicture}", r"\end{tikzpicture}"]
+    # last code snippet first
+    for formatted in reversed(soup.find_all("pre")):
+        if code := formatted.code:
+            if all(pattern in code.text for pattern in patterns):
+                return code
     return False
 
 nlp = English()
 nlp.add_pipe('sentencizer')
 def extract_description(soup):
-    bla = repr(soup)
     if target := soup.find(['pre', 'img']):
         # delete everything after <img> and <pre>
         for e in target.find_all_next():
