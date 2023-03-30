@@ -105,6 +105,21 @@ class TikZ(builder.ArrowBasedBuilder):
         example["code"] = sub(r"^(%.*\n)*", "", example["code"]) # remove leading comments
         return example
 
+    def _truncate(self, description):
+        """
+        Descriptions can be longer than 512 tokens, which leads to OOM errors. So we
+        truncate them to the half of the model maximum length to leave enough
+        space for generating text.
+        """
+        tokenizer = self.config.alpaca.pipeline.tokenizer
+        return tokenizer.decode(
+            tokenizer(description.strip(),
+            truncation=True,
+            add_special_tokens=False,
+            max_length=tokenizer.model_max_length//2)['input_ids']
+        ).strip()
+
+
     def _generate_tables(self, datasets):
         loaders = list()
 
@@ -121,7 +136,7 @@ class TikZ(builder.ArrowBasedBuilder):
 
         for idx, examples in enumerate(batched(chain(*loaders), self.config.bs)):
             instructions = [instr for example in examples for instr in self.config.prompts[example["origin"]]]
-            inputs = ["\n\n".join((example['title'], example['description'])).strip() for example in examples for _ in range(2)]
+            inputs = ["\n\n".join((ex['title'], self._truncate(ex['description']))).strip() for ex in examples for _ in range(2)]
 
             for example, instructions in zip(examples, batched(self.config.alpaca(instructions, inputs), len(FORMULATIONS))):
                 example['instructions'] = instructions
