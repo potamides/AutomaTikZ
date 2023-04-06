@@ -35,7 +35,7 @@ def parse_args():
     argument_parser.add_argument(
         "--dataset",
         required=True,
-        help="path to the text2tikz dataset (in csv format)",
+        help="path to the text2tikz dataset (in json format)",
     )
     argument_parser.add_argument(
         "--debug",
@@ -60,7 +60,7 @@ if __name__ == "__main__":
         model=model,
         tokenizer=tokenizer,
         output_dir=join(args.output, model.config.name_or_path),
-        dataset=load_dataset("csv", data_files=args.dataset, split="train")
+        dataset=load_dataset("json", data_files=args.dataset, split="train")
     )
 
     def generate(instruction):
