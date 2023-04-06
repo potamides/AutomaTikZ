@@ -2,6 +2,6 @@
 
 from datasets import load_dataset
 
+# generate and save dataset
 x = load_dataset("text2tikz")
-x['train'].to_json("tikz.json")
-x['train'].to_csv("tikz.csv")
+x['train'].to_csv("text2tikz.csv")
