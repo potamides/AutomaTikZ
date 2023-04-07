@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from copy import deepcopy
 from itertools import chain
 import os
 from typing import List
@@ -31,9 +32,9 @@ def temporary_change_attributes(something, **kwargs):
 def load(base_model="decapoda-research/llama-7b-hf"):
     model = LlamaForCausalLM.from_pretrained(base_model, torch_dtype=torch.float16)
     tokenizer = LlamaTokenizer.from_pretrained(base_model,
-       model_max_length=2048,
-       pad_token="<0x00>", # we want a pad token, <0x00> to <0xFF> seem to be additional special tokens so use them
-       sep_token="<0x01>", # we use this for separating instruction and code
+       model_max_length=1024, # 1536
+       pad_token="<0x00>", # null character
+       sep_token="<0x1D>", # group separator
        padding_side="left" # Allow batched inference
     )
 
@@ -48,7 +49,7 @@ def train(
     overwrite=False,
     # training hyperparams
     batch_size: int = 128,
-    micro_batch_size: int = 8,
+    micro_batch_size: int = 1,
     num_epochs: int = 10,
     learning_rate: float = 3e-4,
     #val_set_size: int = 2000,
@@ -78,7 +79,7 @@ def train(
                 for input_ids, attention_mask in zip(result["input_ids"], result["attention_mask"]):
                     input_ids.append(tokenizer.sep_token_id)
                     attention_mask.append(1)
-            result["labels"] = result["input_ids"].copy()
+            result["labels"] = deepcopy(result["input_ids"])
 
         return result
 
@@ -141,9 +142,9 @@ def train(
         batched=True,
         remove_columns=dataset.column_names,
     )
-    logging.info(f"Dataset size before filtering out too long examples: {len(dataset)}")
-    dataset = dataset.filter(lambda example: len(example['input_ids']) <= tokenizer.model_max_length)
-    logging.info(f"Dataset size after filtering out too long examples: {len(dataset)}")
+    logger.info(f"Dataset size before filtering out too long examples: {len(train_data)}")
+    train_data = train_data.filter(lambda example: len(example['input_ids']) <= tokenizer.model_max_length)
+    logger.info(f"Dataset size after filtering out too long examples: {len(train_data)}")
 
     trainer = transformers.Trainer(
         model=model,
@@ -151,6 +152,7 @@ def train(
         args=transformers.TrainingArguments(
             per_device_train_batch_size=micro_batch_size,
             gradient_accumulation_steps=gradient_accumulation_steps,
+            #gradient_checkpointing=True,
             warmup_steps=100,
             num_train_epochs=num_epochs,
             learning_rate=learning_rate,
