@@ -4,7 +4,7 @@ from os.path import join
 
 from datasets import load_dataset
 from torch.cuda import current_device, is_available as has_cuda
-from transformers import set_seed, TextGenerationPipeline
+from transformers import TextGenerationPipeline, set_seed
 from transformers.utils.logging import (
     enable_explicit_format,
     set_verbosity_debug,
@@ -66,12 +66,13 @@ if __name__ == "__main__":
     def generate(instruction):
         pipeline = TextGenerationPipeline(model, tokenizer, device=current_device() if has_cuda() else -1)
         # hyperparameters from https://github.com/tatsu-lab/stanford_alpaca/issues/35
-        code = pipeline( # pyright: ignore
+        return pipeline( # pyright: ignore
             instruction + tokenizer.sep_token,
-            temperature=0.7,
-            top_p=0.9,
+            temperature=0.2,
+            #top_p=0.9,
             num_beams=1,
             max_length=2048,
             do_sample=True,
             return_full_text=False,
-        )[0]["generated_text"]
+            clean_up_tokenization_spaces=True,
+        )[0]["generated_text"].strip()
