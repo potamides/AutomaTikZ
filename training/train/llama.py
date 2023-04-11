@@ -15,6 +15,7 @@ from transformers import LlamaForCausalLM, LlamaTokenizer
 import transformers
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import logging
+from transformers import AddedToken
 
 logger = logging.get_logger("transformers")
 
@@ -30,11 +31,20 @@ def temporary_change_attributes(something, **kwargs):
             setattr(something, k, v)
 
 def load(base_model="decapoda-research/llama-7b-hf"):
-    model = LlamaForCausalLM.from_pretrained(base_model, torch_dtype=torch.float16)
+    token = lambda s: AddedToken(s, lstrip=False, rstrip=False)
+    model = LlamaForCausalLM.from_pretrained(base_model,
+       pad_token_id=0,
+       bos_token_id=1,
+       eos_token_id=2,
+       torch_dtype=torch.float16
+    )
     tokenizer = LlamaTokenizer.from_pretrained(base_model,
        model_max_length=1024, # 1536
-       pad_token="<0x00>", # null character
-       sep_token="<0x1D>", # group separator
+       unk_token=token("<unk>"),
+       bos_token=token("<s>"),
+       eos_token=token("</s>"),
+       pad_token=token("<unk>"), # same as unk_token
+       sep_token=token("<0x1D>"), # ascii group separator
        padding_side="left" # Allow batched inference
     )
 
