@@ -5,13 +5,14 @@ Combination of various sources of tikz descriptions with aligned code.
 from itertools import chain, islice
 from re import sub
 
-from alpaca import Alpaca
 from datasets import Features, Sequence, Value, builder
 from datasets.info import DatasetInfo
 from datasets.splits import Split, SplitGenerator
 from datasets.utils import logging
 from pyarrow import Table
+from transformers import set_seed
 
+from alpaca import Alpaca
 from text2tikz.loaders import (
     janosh_tikz,
     petarv_tikz,
@@ -21,15 +22,16 @@ from text2tikz.loaders import (
 )
 
 logger = logging.get_logger("transformers")
+set_seed(0)
 
 PROMPT_TEMPLATES = {
-    "example": "Rephrase the following description of a TikZ picture into a detailed instruction. Do not leave out any information. The instruction will be given to a language model as a prompt to generate the corresponding TikZ picture. {formulation}",
-    "stack_exchange": "Rephrase the following Stack Exchange question about TikZ into a detailed instruction. Do not leave out any information but ignore references to example images or code snippets. The instruction will be given to a language model as a prompt to generate the corresponding TikZ picture. {formulation}"
+    "example": "Rephrase the following natural language description of a TikZ picture into a detailed instruction, as if you were prompting a language model to create the TikZ picture. Be as specific and precise as possible, leaving no room for ambiguity or confusion. {formulation}",
+    "stack_exchange": "Rephrase the following Stack Exchange question for creating a TikZ picture into a detailed instruction, as if you were prompting a language model to create the TikZ picture specified in the answer. Be as specific and precise as possible, but exclude references to example images or code snippets. {formulation}"
 }
 
 FORMULATIONS = {
-    "polite": "Formulate the instruction in detail as a polite request.",
-    "imperative": "Formulate the instruction in detail using imperative speech."
+    "polite": 'Formulate the instruction in imperative speech. Begin with "please."',
+    "imperative": "Formulate the instruction in imperative speech."
 }
 
 def batched(iterable, n):
@@ -121,7 +123,7 @@ class TikZ(builder.ArrowBasedBuilder):
 
 
     def _generate_tables(self, datasets):
-        loaders = list()
+        loaders, all_tikz = list(), set()
 
         for name, load in self.config.generators.items():
             logger.debug("Processing examples from '%s'.", name)
@@ -134,11 +136,12 @@ class TikZ(builder.ArrowBasedBuilder):
 
             loaders.append(map(lambda item, name=name: self._clean(item) | {"origin": name}, loader))
 
-        for idx, examples in enumerate(batched(chain(*loaders), self.config.bs)):
+        for idx, examples in enumerate(batched(filter(lambda ex: ex['code'] not in all_tikz, chain(*loaders)), self.config.bs)):
             instructions = [instr for example in examples for instr in self.config.prompts[example["origin"]]]
             inputs = ["\n\n".join((ex['title'], self._truncate(ex['description']))).strip() for ex in examples for _ in range(2)]
 
             for example, instructions in zip(examples, batched(self.config.alpaca(instructions, inputs), len(FORMULATIONS))):
                 example['instructions'] = instructions
+                all_tikz.add(example['code'])
 
             yield idx, Table.from_pylist(examples)
