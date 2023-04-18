@@ -1,6 +1,7 @@
+from itertools import chain
 import os
 
-from transformers import T5ForConditionalGeneration, T5Tokenizer
+from transformers import T5ForConditionalGeneration, RobertaTokenizer
 from transformers import (
     DataCollatorForSeq2Seq,
     Seq2SeqTrainer,
@@ -9,60 +10,36 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import logging
 
-from . import GlobalBatchSeq2SeqTrainingArguments
-
 logger = logging.get_logger("transformers")
 
 def load(base_model="Salesforce/codet5-large"):
     model = T5ForConditionalGeneration.from_pretrained(base_model)
-    tokenizer = T5Tokenizer.from_pretrained(base_model, model_max_length=1024) #VERY_LARGE_INTEGER)
+    tokenizer = RobertaTokenizer.from_pretrained(base_model, model_max_length=1024) #VERY_LARGE_INTEGER)
     # https://stackoverflow.com/a/72305836
     #tokenizer.add_tokens([AddedToken("\n", normalized=False), "{", "}", "\\", "^", "`", "~"])
     #model.resize_token_embeddings(len(tokenizer))
 
     return model, tokenizer
 
-class GlobalBatchSeq2SeqTrainingArguments(Seq2SeqTrainingArguments):
-    """
-    TrainingArguments class which evenly distributes batch_size on available
-    GPUs under distributed training (DistributedDataParallel). Normal
-    TrainingArguments use same batch_size on each GPU. (see
-    https://discuss.pytorch.org/t/should-we-split-batch-size-according-to-ngpu-per-node-when-distributeddataparallel/72769/15)
-    This should also work for DataParallel which does splitting on its own (see
-    https://discuss.pytorch.org/t/a-question-concerning-batchsize-and-multiple-gpus-in-pytorch/33767).
-    Additionally, batch_size is scaled according to gradient accumulation
-    steps.
-    """
+def train(
+    output_dir: str,
+    model,
+    tokenizer,
+    dataset,
+    overwrite=False,
+    # training hyperparams
+    batch_size: int = 8,
+    micro_batch_size: int = 2,
+    num_epochs: int = 30,
+    learning_rate: float = 3e-4,
+    # llm hyperparams
+    group_by_length: bool = False,  # faster when True, but produces an odd training loss curve
+):
+    world_size = int(os.environ.get("WORLD_SIZE", 1))
+    gradient_accumulation_steps = batch_size // micro_batch_size
+    if ddp := world_size != 1:
+        gradient_accumulation_steps = gradient_accumulation_steps // world_size
 
-    def __init__(
-        self,
-        global_train_batch_size=8,
-        global_eval_batch_size=8,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-        self.global_train_batch_size = global_train_batch_size
-        self.global_eval_batch_size = global_eval_batch_size
-        self.per_device_train_batch_size = self._scale_batch_size(
-            global_train_batch_size
-        )
-        self.per_device_eval_batch_size = self._scale_batch_size(global_eval_batch_size)
-        if self.world_size > 1:
-            logger.info(f"Dividing batches equally on {self.world_size} processes.")
-
-    def _scale_batch_size(self, batch_size) -> int:
-        scaled_batch_size, remainder = divmod(
-            batch_size,
-            self.world_size * self.gradient_accumulation_steps,
-        )
-        if remainder != 0:
-            raise ValueError(
-                "`batch_size` must be divisible by number of processes times gradient accumulation steps."
-            )
-        return scaled_batch_size
-
-
-def train(output_dir, model, tokenizer, dataset, overwrite=False):
     # Detecting last checkpoint.
     last_checkpoint = None
     if os.path.isdir(output_dir) and not overwrite:
@@ -79,12 +56,13 @@ def train(output_dir, model, tokenizer, dataset, overwrite=False):
             )
 
     def preprocess_function(examples):
-        inputs = [f"{title.strip()}\n\n{desc.strip()}".strip() for title, desc in zip(examples["title"], examples["description"])]
-        targets = examples["code"]
+        instructions = list(chain.from_iterable(examples['instructions']))
+        # repeat snippets as often as we instructions we have for them
+        codesnippets = [tikz for tikz in examples['code'] for _ in range(len(examples['instructions'][0]))]
 
-        model_inputs = tokenizer(inputs)#, truncation=True)
+        model_inputs = tokenizer(instructions)#, truncation=True)
         # Tokenize targets with the `text_target` keyword argument
-        labels = tokenizer(text_target=targets)#, truncation=True)
+        labels = tokenizer(text_target=codesnippets)#, truncation=True)
         model_inputs["labels"] = labels["input_ids"]
 
         return model_inputs
@@ -94,39 +72,45 @@ def train(output_dir, model, tokenizer, dataset, overwrite=False):
         batched=True,
         remove_columns=dataset.column_names,
     )
-    logging.info(f"Dataset size before filtering out too long examples: {len(dataset)}")
+    logger.info(f"Dataset size before filtering out too long examples: {len(dataset)}")
     dataset = dataset.filter(lambda example: max(len(example['input_ids']), len(example['labels'])) <= tokenizer.model_max_length)
-    logging.info(f"Dataset size after filtering out too long examples: {len(dataset)}")
-
-    data_collator = DataCollatorForSeq2Seq(
-        tokenizer,
-        model=model,
-        label_pad_token_id=tokenizer.pad_token_id,
-    )
-
-    training_args = GlobalBatchSeq2SeqTrainingArguments(
-        optim="adamw_torch",
-        bf16=True,
-        ddp_find_unused_parameters=False,
-        gradient_accumulation_steps=2,
-        global_train_batch_size=8,
-        num_train_epochs=30,
-        save_total_limit=1,
-        output_dir=output_dir
-    )
+    logger.info(f"Dataset size after filtering out too long examples: {len(dataset)}")
 
     # Initialize our Trainer
     trainer = Seq2SeqTrainer(
         model=model,
-        args=training_args,
-        train_dataset=dataset,
         tokenizer=tokenizer,
-        data_collator=data_collator,
+        train_dataset=dataset,
+        args=Seq2SeqTrainingArguments(
+            per_device_train_batch_size=micro_batch_size,
+            gradient_accumulation_steps=gradient_accumulation_steps,
+            #gradient_checkpointing=True,
+            warmup_steps=100,
+            num_train_epochs=num_epochs,
+            learning_rate=learning_rate,
+            #fp16=True,
+            #tf32=True,
+            bf16=True,
+            logging_steps=10,
+            optim="adamw_torch",
+            save_strategy="epoch",
+            output_dir=output_dir,
+            save_total_limit=1,
+            ddp_find_unused_parameters=False if ddp else None,
+            group_by_length=group_by_length,
+        ),
+        data_collator=DataCollatorForSeq2Seq(
+            tokenizer,
+            model=model,
+            pad_to_multiple_of=8,
+            return_tensors="pt",
+            padding=True
+        ),
     )
 
     # Training
     trainer.train(resume_from_checkpoint=last_checkpoint)
-    trainer.save_model()  # Saves the tokenizer too for easy upload
+    trainer.save_model()
     trainer.save_state()
 
     return model, tokenizer

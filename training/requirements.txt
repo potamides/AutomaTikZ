@@ -1,5 +1,5 @@
 datasets==2.11.0
-peft==0.2.0
 sentencepiece==0.1.97
 torch==2.0.0
-transformers @ https://github.com/huggingface/transformers/archive/12d51db243a00726a548a43cc333390ebae731e3.zip
+transformers==4.28.1
+peft==0.2.0

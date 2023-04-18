@@ -13,11 +13,61 @@ from peft import (
 import torch
 from transformers import LlamaForCausalLM, LlamaTokenizer
 import transformers
+from transformers import AddedToken
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import logging
-from transformers import AddedToken
 
 logger = logging.get_logger("transformers")
+
+def prepare_model_for_training(
+    model,
+    output_embedding_layer_name="lm_head",
+    use_gradient_checkpointing=False,
+    layer_norm_names=["layer_norm", "layernorm"],
+    modules_to_save=[]
+):
+    for name, param in model.named_parameters():
+        # freeze base model's layers
+        param.requires_grad = False
+
+        # cast layer norm in fp32 for stability for float16 models
+        if param.ndim == 1 and any(layer_norm_name in name for layer_norm_name in layer_norm_names):
+            param.data = param.data.to(torch.float32)
+        # fix ValueError: Attempting to unscale FP16 gradients.
+        elif any(module in name for module in modules_to_save):
+            param.data = param.data.to(torch.float32)
+
+    if use_gradient_checkpointing:
+        # For backward compatibility
+        if hasattr(model, "enable_input_require_grads"):
+            model.enable_input_require_grads()
+        else:
+
+            def make_inputs_require_grad(module, input, output):
+                output.requires_grad_(True)
+
+            model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
+
+        # enable gradient checkpointing for memory efficiency
+        model.gradient_checkpointing_enable()
+
+    if hasattr(model, output_embedding_layer_name):
+        output_embedding_layer = getattr(model, output_embedding_layer_name)
+        input_dtype = output_embedding_layer.weight.dtype
+
+        class CastOutputToFloat(torch.nn.Sequential):
+            r"""
+            Manually cast to the expected dtype of the lm_head as sometimes there is a final layer norm that is casted
+            in fp32
+
+            """
+
+            def forward(self, x):
+                return super().forward(x.to(input_dtype)).to(torch.float32)
+
+        setattr(model, output_embedding_layer_name, CastOutputToFloat(output_embedding_layer))
+
+    return model
 
 @contextmanager
 def temporary_change_attributes(something, **kwargs):
@@ -73,9 +123,13 @@ def train(
         "v_proj",
         "o_proj"
     ],
+    full_finetune_modules: List[str] = [
+        "embed_tokens",
+        "lm_head"
+    ],
     # llm hyperparams
-    train_on_inputs: bool = True,  # if False, masks out inputs in loss
-    group_by_length: bool = True,  # faster, but produces an odd training loss curve
+    train_on_inputs: bool = False,  # if False, masks out inputs in loss
+    group_by_length: bool = False,  # faster when True, but produces an odd training loss curve
 ):
     world_size = int(os.environ.get("WORLD_SIZE", 1))
     gradient_accumulation_steps = batch_size // micro_batch_size
@@ -112,11 +166,12 @@ def train(
         r=lora_r,
         lora_alpha=lora_alpha,
         target_modules=lora_target_modules,
+        modules_to_save=full_finetune_modules,
         lora_dropout=lora_dropout,
         bias="none",
         task_type="CAUSAL_LM",
     )
-    model = get_peft_model(model, config)
+    model = get_peft_model(prepare_model_for_training(model, modules_to_save=full_finetune_modules), config)
 
     last_checkpoint = None
     if os.path.isdir(output_dir) and not overwrite:
@@ -162,13 +217,12 @@ def train(
         args=transformers.TrainingArguments(
             per_device_train_batch_size=micro_batch_size,
             gradient_accumulation_steps=gradient_accumulation_steps,
-            #gradient_checkpointing=True,
             warmup_steps=100,
             num_train_epochs=num_epochs,
             learning_rate=learning_rate,
-            #fp16=True,
+            fp16=True,
+            #bf16=True,
             #tf32=True,
-            bf16=True,
             logging_steps=10,
             optim="adamw_torch",
             save_strategy="epoch",
@@ -192,6 +246,10 @@ def train(
 
     model = torch.compile(model)
     trainer.train(resume_from_checkpoint=last_checkpoint)
+
+    # undo float casting to be able to maintain correct name of lm_head weights
+    if isinstance(model.lm_head, torch.nn.Sequential) and len(model.lm_head) == 1:
+        model.lm_head = model.lm_head[0]
 
     model.save_pretrained(output_dir)
     trainer.save_state()

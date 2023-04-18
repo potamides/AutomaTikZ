@@ -4,14 +4,18 @@ from os.path import join
 
 from datasets import load_dataset
 from torch.cuda import current_device, is_available as has_cuda
-from transformers import TextGenerationPipeline, set_seed
+from transformers import (
+    Text2TextGenerationPipeline as T2TGP,
+    TextGenerationPipeline as TGP,
+    set_seed,
+)
 from transformers.utils.logging import (
     enable_explicit_format,
     set_verbosity_debug,
     set_verbosity_info,
 )
 
-from train import llama
+import train
 
 set_verbosity_info()
 enable_explicit_format()
@@ -52,11 +56,8 @@ if __name__ == "__main__":
         set_verbosity_debug()
         args.output = join(args.output, "debug")
 
-    if args.model != "llama":
-        raise NotImplementedError # t5 trainer doesn't work yet
-
-    model, tokenizer = llama.load()
-    model, tokenizer = llama.train(
+    model, tokenizer = getattr(train, args.model).load()
+    model, tokenizer = getattr(train, args.model).train(
         model=model,
         tokenizer=tokenizer,
         output_dir=join(args.output, model.config.name_or_path),
@@ -64,15 +65,21 @@ if __name__ == "__main__":
     )
 
     def generate(instruction):
-        pipeline = TextGenerationPipeline(model, tokenizer, device=current_device() if has_cuda() else -1)
-        # hyperparameters from https://github.com/tatsu-lab/stanford_alpaca/issues/35
-        return pipeline( # pyright: ignore
-            instruction + tokenizer.sep_token,
+        enc_dec = model.config.is_encoder_decoder
+        gen_kwargs = dict(
             temperature=0.2,
             #top_p=0.9,
             num_beams=1,
-            max_length=2048,
+            max_length=1024,
             do_sample=True,
-            return_full_text=False,
             clean_up_tokenization_spaces=True,
+        )
+        pipeline = (T2TGP if enc_dec else TGP)(
+            model=model,
+            tokenizer=tokenizer,
+            device=current_device() if has_cuda() else -1
+        )
+        return pipeline( # pyright: ignore
+            instruction + ("" if enc_dec else tokenizer.sep_token),
+            **(gen_kwargs | ({} if enc_dec else dict(return_full_text=False)))
         )[0]["generated_text"].strip()
