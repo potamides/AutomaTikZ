@@ -1,4 +1,4 @@
-from ssl import create_default_context
+from ssl import create_default_context, VerifyMode
 from urllib.parse import urljoin as join
 from urllib.request import urlopen
 
@@ -19,6 +19,9 @@ def cleanup(text):
 def load():
     context = create_default_context()
     context.set_ciphers('DEFAULT:!DH') # fixes ssl.SSLError: [SSL: DH_KEY_TOO_SMALL] dh key too small (_ssl.c:997)
+    # certificate of server expired
+    context.check_hostname = False
+    context.verify_mode = VerifyMode.CERT_NONE
 
     soup = BeautifulSoup(urlopen(example_list, context=context), 'html.parser')
     content = soup.find(id="content-wrapper").find("ul")
