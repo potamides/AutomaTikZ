@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scidraw"
+description = "Generating scientific vector graphics via TikZ"
+readme = "README.md"
+keywords = [
+  "Deep Learning",
+  "Language Models",
+  "Transformers",
+  "Vector Graphics",
+  "TikZ",
+  "Natural Language Processing",
+  "Natural Language Generation",
+  "Text-to-Image",
+]
+license = {text = "MIT License"}
+dependencies = [
+  "datasets~=2.11.0",
+  "sentencepiece~=0.1.97",
+  "torch~=2.0.0",
+  "transformers~=4.28.1",
+  "peft~=0.2.0"
+]
+requires-python = "~=3.10.9"
+dynamic = ["version"]
+
+[project.urls]
+repository = "https://github.com/potamides/SciDraw"
+
+[tool.setuptools_scm]
+write_to = "scidraw/_version.py"
+parentdir_prefix_version = "scidraw-"
+
+[tool.setuptools.packages.find]
+include = ["scidraw*"]
