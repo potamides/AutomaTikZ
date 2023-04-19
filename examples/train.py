@@ -15,7 +15,7 @@ from transformers.utils.logging import (
     set_verbosity_info,
 )
 
-import train
+from scidraw import train
 
 set_verbosity_info()
 enable_explicit_format()
