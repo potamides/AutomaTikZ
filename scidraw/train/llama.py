@@ -248,8 +248,8 @@ def train(
     trainer.train(resume_from_checkpoint=last_checkpoint)
 
     # undo float casting to be able to maintain correct name of lm_head weights
-    if isinstance(model.lm_head, torch.nn.Sequential) and len(model.lm_head) == 1:
-        model.lm_head = model.lm_head[0]
+    if type(model.lm_head).__name__ == "CastOutputToFloat":
+        model.base_model.model.lm_head = model.lm_head[0]
 
     model.save_pretrained(output_dir)
     trainer.save_state()
