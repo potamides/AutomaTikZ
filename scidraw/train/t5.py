@@ -12,7 +12,8 @@ from transformers.utils import logging
 
 logger = logging.get_logger("transformers")
 
-def load(base_model="Salesforce/codet5-large"):
+def load(base_model="Salesforce/codet5-{size}", size="large"):
+    base_model = base_model.format(size=size)
     model = T5ForConditionalGeneration.from_pretrained(base_model)
     tokenizer = RobertaTokenizer.from_pretrained(base_model, model_max_length=1024) #VERY_LARGE_INTEGER)
     # https://stackoverflow.com/a/72305836
@@ -32,6 +33,7 @@ def train(
     micro_batch_size: int = 2,
     num_epochs: int = 30,
     learning_rate: float = 3e-4,
+    gradient_checkpointing = False,
     # llm hyperparams
     group_by_length: bool = False,  # faster when True, but produces an odd training loss curve
 ):
@@ -84,7 +86,7 @@ def train(
         args=Seq2SeqTrainingArguments(
             per_device_train_batch_size=micro_batch_size,
             gradient_accumulation_steps=gradient_accumulation_steps,
-            #gradient_checkpointing=True,
+            gradient_checkpointing=gradient_checkpointing,
             warmup_steps=100,
             num_train_epochs=num_epochs,
             learning_rate=learning_rate,

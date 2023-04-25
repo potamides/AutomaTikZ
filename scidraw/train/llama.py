@@ -80,7 +80,8 @@ def temporary_change_attributes(something, **kwargs):
         for k, v in previous_values.items():
             setattr(something, k, v)
 
-def load(base_model="decapoda-research/llama-7b-hf"):
+def load(base_model="decapoda-research/llama-{size}-hf", size="7b"):
+    base_model = base_model.format(size=size)
     token = lambda s: AddedToken(s, lstrip=False, rstrip=False)
     model = LlamaForCausalLM.from_pretrained(base_model,
        pad_token_id=0,
@@ -112,6 +113,7 @@ def train(
     micro_batch_size: int = 1,
     num_epochs: int = 10,
     learning_rate: float = 3e-4,
+    gradient_checkpointing = False,
     #val_set_size: int = 2000,
     # lora hyperparams
     lora_r: int = 16,
@@ -171,7 +173,12 @@ def train(
         bias="none",
         task_type="CAUSAL_LM",
     )
-    model = get_peft_model(prepare_model_for_training(model, modules_to_save=full_finetune_modules), config)
+    model = get_peft_model(prepare_model_for_training(
+        model=model,
+        modules_to_save=full_finetune_modules,
+        use_gradient_checkpointing=gradient_checkpointing),
+        peft_config=config
+   )
 
     last_checkpoint = None
     if os.path.isdir(output_dir) and not overwrite:
