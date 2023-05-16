@@ -1,4 +1,6 @@
-from ssl import create_default_context, VerifyMode
+from datetime import datetime
+from ssl import VerifyMode, create_default_context
+from string import punctuation
 from urllib.parse import urljoin as join
 from urllib.request import urlopen
 
@@ -27,14 +29,24 @@ def load():
     content = soup.find(id="content-wrapper").find("ul")
 
     for link in content.find_all("a"):
-        example = BeautifulSoup(urlopen(join(base_url, link.get('href')), context=context), 'html.parser')
+        example = BeautifulSoup(urlopen(uri := join(base_url, link.get('href')), context=context), 'html.parser')
 
         title = link.text.strip()
         description = cleanup(example.find_all('div', attrs={"class": "example-description"})[0].text.strip())
+        date = example.find('div', attrs={"class": "pubinfo"}).text.split()[1]
         tikz = example.pre.text.strip()
 
+        if description:
+            if title.lower() not in description.lower():
+                description = f"{title}. {description}"
+                if description[-1] not in punctuation:
+                    description += "."
+        else:
+            description = title
+
         yield {
-            "title": title,
-            "description": description,
-            "code": tikz
+            "caption": " ".join(description.split()),
+            "code": tikz,
+            "date": datetime.strptime(date, "%Y-%m-%d"),
+            "uri": uri
         }

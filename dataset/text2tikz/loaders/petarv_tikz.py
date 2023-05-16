@@ -1,7 +1,15 @@
+from datetime import datetime
 from glob import glob
-from os.path import dirname, join
-from markdown import markdown
+from json import load as jload
+from os.path import dirname, join, relpath, sep
+from urllib.parse import quote
+from urllib.request import urlopen
+
 from bs4 import BeautifulSoup
+from markdown import markdown
+
+REPO = "PetarV-/TikZ"
+CREATED = datetime.strptime(jload(urlopen(f"https://api.github.com/repos/{REPO}"))['created_at'], "%Y-%m-%dT%H:%M:%SZ")
 
 def load(filepath):
     for file in glob(join(filepath, "TikZ-*/*/*.tex")):
@@ -11,7 +19,8 @@ def load(filepath):
             code = f.read().strip()
 
         yield {
-            "title": soup.h1.text,
-            "description": descr,
-            "code": code
+            "caption": descr or soup.h1.text,
+            "code": code,
+            "date": CREATED,
+            "uri": join(f"https://github.com/{REPO}/blob/master", quote(relpath(dirname(file), filepath).split(sep, 1)[1]))
         }

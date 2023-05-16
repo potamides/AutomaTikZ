@@ -1,5 +1,7 @@
+from datetime import datetime
 from itertools import count
 from json import load as jload
+from string import punctuation
 from urllib.request import urlopen
 
 from bs4 import BeautifulSoup
@@ -13,22 +15,32 @@ def load(base_url="https://tikz.net"):
             break
 
         for article in BeautifulSoup(json['html'], 'html.parser').find_all('article'):
-            soup = BeautifulSoup(urlopen(article.a.get('href')), 'html.parser')
-            content = soup.find_all('div', attrs={"class": "entry-content"})
+            soup = BeautifulSoup(urlopen(uri := article.a.get('href')), 'html.parser')
+            content = soup.find('div', attrs={"class": "entry-content"})
 
-            if content and (text := content[0].text.strip()):
-                desc, delim, tikz = text.rpartition(r"\documentclass")
-                tikz = "".join(tikz.rpartition(r"\end{document}")[:2])
+            title = soup.h1.text.strip()
+            date = soup.find("time", attrs={"itemprop": "datePublished"})['datetime']
 
-                # remove any comments before \documentclass
-                cleaned_desc = ""
-                for idx, line in enumerate((rev_desc := list(reversed(desc.strip().split("\n"))))):
-                    if line.strip() and not line.startswith("%"):
-                        cleaned_desc = "\n".join(reversed(rev_desc[idx:])).strip()
-                        break
-                if cleaned_desc and tikz:
-                    yield {
-                        "title": soup.h1.text,
-                        "description": cleaned_desc,
-                        "code": delim + tikz
-                    }
+            if content:
+                for pre in content.find_all("pre"):
+                    desc, tikz = "", pre.text
+                    for s in pre.previous_siblings:
+                        if s.name == "pre": break
+                        desc += s.text
+
+                    desc = desc.replace("Edit and compile if you like:", "").strip()
+                    if desc.strip():
+                        if title.lower() not in desc.lower():
+                            desc = f"{title}. {desc}"
+                            if desc[-1] not in punctuation:
+                                desc += "."
+                    else:
+                        desc = title
+
+                    if tikz:
+                        yield {
+                            "caption": " ".join(desc.split()),
+                            "code": tikz.strip(),
+                            "date": datetime.fromisoformat(date),
+                            "uri": uri
+                        }

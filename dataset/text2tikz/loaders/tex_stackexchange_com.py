@@ -1,9 +1,8 @@
 from collections import defaultdict
-from string import punctuation
+from datetime import datetime
 import xml.etree.ElementTree as etree
 
 from bs4 import BeautifulSoup
-from spacy.lang.en import English
 
 # This implementation is based on https://github.com/EleutherAI/stackexchange-dataset
 # Information about database schema at https://meta.stackexchange.com/a/2678
@@ -45,7 +44,7 @@ def trim_attribs(elem_attribs, attrib_type="question"):
         elem_attribs["ParsedAnswers"] = 0
         elem_attribs["Answers"] = {}
     elif attrib_type == "answer":
-        to_keep = ['Id', 'Body', 'Score']
+        to_keep = ['Id', 'Body', 'Score', 'CreationDate']
         new_dict = {}
         for item in to_keep:
             new_dict[item] = elem_attribs[item]
@@ -62,26 +61,11 @@ def extract_code(soup):
                 return code
     return False
 
-nlp = English()
-nlp.add_pipe('sentencizer')
 def extract_description(soup):
-    if target := soup.find(['pre', 'img']):
-        # delete everything after <img> and <pre>
-        for e in target.find_all_next():
-            e.extract()
-        # if img and pre are inside <p> with text delete the text
-        if (para := target.find_parent("p")) and para.text:
-            para.extract()
-        # else look at last sentence before, if it ends in ":", "," or "" delete it
-        elif para := next(iter(p for p in target.find_all_previous("p") if p is not para), None):
-            text = para.text.strip()
-            if text and (text.endswith((":", ",")) or not text.endswith(tuple(punctuation))):
-                doc = nlp(text)
-                end_pos = list(doc.sents)[-1].start
-                para.string = doc[:end_pos].text
-                if not para.string.strip():
-                    para.extract()
-        target.extract()
+    for img in soup.find_all('img'):
+        img.replace_with("[IMG]")
+    for pre in soup.find_all("pre"):
+        pre.replace_with("[CODE]")
 
     return soup
 
@@ -155,9 +139,10 @@ class TeXExchangeParser():
                             for a in parent["Answers"].values():
                                 if code := extract_code(BeautifulSoup(a["Body"], "html.parser")):
                                     yield {
-                                        "title": title,
-                                        "description": description,
-                                        "code": code.text
+                                        "caption": "\n\n".join((title, description)).strip(),
+                                        "code": code.text,
+                                        "date": datetime.fromisoformat(a['CreationDate']),
+                                        "uri": f"https://tex.stackexchange.com/a/{a['Id']}"
                                     }
         for key in keys_to_del:
             self.questions.pop(key, None)

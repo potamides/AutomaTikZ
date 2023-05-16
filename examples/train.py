@@ -35,7 +35,7 @@ def parse_args():
     argument_parser.add_argument(
         "--dataset",
         required=True,
-        help="path to the text2tikz dataset (in json format)",
+        help="path to the text2tikz dataset (in parquet format)",
     )
     argument_parser.add_argument(
         "--gradient_checkpointing",
@@ -68,5 +68,5 @@ if __name__ == "__main__":
         tokenizer=tokenizer,
         gradient_checkpointing=args.gradient_checkpointing,
         output_dir=join(args.output, model.config.name_or_path),
-        dataset=load_dataset("json", data_files=args.dataset, split="train")
+        dataset=load_dataset("parquet", data_files=args.dataset, split="train")
     )

@@ -1,6 +1,5 @@
 from contextlib import contextmanager
 from copy import deepcopy
-from itertools import chain
 import os
 from typing import List
 
@@ -150,19 +149,17 @@ def train(
         return result
 
     def preprocess_function(examples):
-        instructions = tokenize(list(chain.from_iterable(examples['instructions'])), add_sep_token=True)
+        captions = tokenize(examples['caption'], add_sep_token=True)
+        codesnippets = tokenize(examples['code'], add_bos_token=False, add_eos_token=True)
 
         if not train_on_inputs:
-            instructions["labels"] = [[-100] * len(labels) for labels in instructions["labels"]]
-
-        # repeat snippets as often as we instructions we have for them
-        codesnippets = tokenize([tikz for tikz in examples['code'] for _ in range(len(examples['instructions'][0]))], add_bos_token=False, add_eos_token=True)
+            captions["labels"] = [[-100] * len(labels) for labels in captions["labels"]]
 
         for key, val in codesnippets.items():
-          for instruction_ids, code_ids in zip(instructions[key], val):
+          for instruction_ids, code_ids in zip(captions[key], val):
             instruction_ids.extend(code_ids)
 
-        return instructions
+        return captions
 
     config = LoraConfig(
         r=lora_r,

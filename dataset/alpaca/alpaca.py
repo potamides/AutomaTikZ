@@ -1,11 +1,10 @@
+from typing import List
 import warnings
 
-from torch import float16
+import torch
 from torch.cuda import current_device, is_available as has_cuda
 from transformers import LlamaForCausalLM, LlamaTokenizer
 from transformers.pipelines.text_generation import TextGenerationPipeline
-
-from typing import List
 
 # https://github.com/tatsu-lab/stanford_alpaca/blob/main/train.py
 PROMPTS = {
@@ -22,13 +21,15 @@ PROMPTS = {
 }
 
 class Alpaca():
-    def __init__(self, bs=1, model="chavinlo/alpaca-13b"):
+    def __init__(self, bs=1, model="chavinlo/alpaca-13b", prefix=None):
         self.pipeline = TextGenerationPipeline(
             batch_size=bs,
-            model=LlamaForCausalLM.from_pretrained(model, torch_dtype=float16),
+            model=LlamaForCausalLM.from_pretrained(model, torch_dtype=torch.float16),
             tokenizer=LlamaTokenizer.from_pretrained(model, padding_side="left"),
             device=current_device() if has_cuda() else -1
         )
+        self.pipeline.model = torch.compile(self.pipeline.model)
+        self.prefix = prefix if prefix else ""
 
     def __call__(self, *args, **kwargs):
         return self.generate(*args, **kwargs)
@@ -37,9 +38,9 @@ class Alpaca():
         prompts = list()
         for instruction, input in zip(instructions, inputs or [None] * len(instructions)):
             if input is None:
-                prompts.append(PROMPTS["no_input"].format(instruction=instruction))
+                prompts.append(PROMPTS["no_input"].format(instruction=instruction) + self.prefix)
             else:
-                prompts.append(PROMPTS["input"].format(instruction=instruction, input=input))
+                prompts.append(PROMPTS["input"].format(instruction=instruction, input=input) + self.prefix)
 
         return prompts
 
@@ -68,4 +69,5 @@ class Alpaca():
                 begin_suppress_tokens=[self.pipeline.tokenizer.convert_tokens_to_ids("<")]
             )]
 
+        completions = [self.prefix + completion for completion in completions]
         return completions[0] if isinstance(instructions, str) else completions

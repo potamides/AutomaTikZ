@@ -1,8 +1,14 @@
+from datetime import datetime
 from glob import glob
-from os.path import join
+from json import load as jload
+from os.path import dirname, join, relpath, sep
+from urllib.parse import quote
+from urllib.request import urlopen
 
 from yaml import Loader, load as yload
 
+REPO = "janosh/tikz"
+CREATED = datetime.strptime(jload(urlopen(f"https://api.github.com/repos/{REPO}"))['created_at'], "%Y-%m-%dT%H:%M:%SZ")
 
 def load(filepath):
     globpath = join(filepath, "tikz-*/assets/*/*.{ext}")
@@ -12,7 +18,8 @@ def load(filepath):
             yaml = yload(g.read(), Loader)
 
         yield {
-            "title": (yaml['title'] or "").strip(),
-            "description": (yaml['description'] or "").strip(),
-            "code": code
+            "caption": (yaml['description'] or yaml['title'] or "").strip(),
+            "code": code,
+            "date": CREATED,
+            "uri": join(f"https://github.com/{REPO}/blob/main", quote(relpath(dirname(tex), filepath).split(sep, 1)[1]))
         }

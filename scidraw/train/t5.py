@@ -1,4 +1,3 @@
-from itertools import chain
 import os
 
 from transformers import T5ForConditionalGeneration, RobertaTokenizer
@@ -58,13 +57,11 @@ def train(
             )
 
     def preprocess_function(examples):
-        instructions = list(chain.from_iterable(examples['instructions']))
-        # repeat snippets as often as we instructions we have for them
-        codesnippets = [tikz for tikz in examples['code'] for _ in range(len(examples['instructions'][0]))]
+        instructions = list(examples['caption'])
 
         model_inputs = tokenizer(instructions)#, truncation=True)
         # Tokenize targets with the `text_target` keyword argument
-        labels = tokenizer(text_target=codesnippets)#, truncation=True)
+        labels = tokenizer(text_target=examples['code'])#, truncation=True)
         model_inputs["labels"] = labels["input_ids"]
 
         return model_inputs
