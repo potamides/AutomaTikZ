@@ -1,11 +1,11 @@
+import torch
+from torch.cuda import current_device, is_available as has_cuda
 from transformers import (
     DisjunctiveConstraint,
     PhrasalConstraint,
     Text2TextGenerationPipeline as T2TGP,
     TextGenerationPipeline as TGP,
 )
-from torch.cuda import current_device, is_available as has_cuda
-
 
 class TikZGenerator:
     def __init__(
@@ -22,6 +22,7 @@ class TikZGenerator:
             tokenizer=tokenizer,
             device=current_device() if has_cuda() else -1,
         )
+        self.pipeline.model = torch.compile(model)
 
         self.gen_kwargs = dict(
             temperature=temperature,
