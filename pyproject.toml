@@ -26,7 +26,9 @@ dependencies = [
   "Pygments~=2.15.1",
   "crystalbleu~=0.1",
   "evaluate~=0.4.0",
-  "sacremoses~=0.0.53"
+  "sacremoses~=0.0.53",
+  "Pillow~=9.5.0",
+  "requests~=2.30.0"
 ]
 requires-python = "~=3.10.9"
 dynamic = ["version"]

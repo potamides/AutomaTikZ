@@ -16,21 +16,28 @@ def parse_args():
     argument_parser = ArgumentParser(
         description="Fine-tune language models for text2tikz"
     )
-    [f"llama-{size}" for size in ["7b", "13b", "30b", "65b"]]
-    [f"t5-{size}" for size in ["base", "small", "large"]]
     argument_parser.add_argument(
         "--model",
         default="llama-7b",
         choices=(
-            [f"llama-{size}" for size in ["7b", "13b", "30b", "65b"]] +
+            [f"{model}-{size}" for size in ["7b", "13b", "30b", "65b"] for model in ["llama", "clima"]] +
             [f"t5-{size}" for size in ["base", "small", "large"]]
         ),
         help="specify which language model to fine-tune",
     )
     argument_parser.add_argument(
         "--output",
-        default="models",
+        default="models/tikz",
         help="directory where to write the model files",
+    )
+    argument_parser.add_argument(
+        "--projector",
+        help="url or path to a pretrained projector for clip soft prompts for multimodal models"
+    )
+    argument_parser.add_argument(
+        "--clip_only",
+        action="store_true",
+        help="condition only on clip soft prompts for multimodal models"
     )
     argument_parser.add_argument(
         "--dataset",
@@ -55,18 +62,24 @@ if __name__ == "__main__":
     enable_explicit_format()
     set_seed(0)
 
-    args = parse_args()
+    args, load_args, train_args = parse_args(), dict(), dict()
+    name, size = args.model.split("-")
 
     if args.debug:
         set_verbosity_debug()
         args.output = join(args.output, "debug")
 
-    name, size = args.model.split("-")
-    model, tokenizer = getattr(train, name).load(size=size)
+    if name == "clima":
+        assert args.projector, "CLiMA needs a pretrained adapter before fine-tuning!" 
+        load_args['pretrain_mm_mlp_adapter'] = args.projector
+        train_args['clip_only'] = args.clip_only
+
+    model, tokenizer = getattr(train, name).load(size=size, **load_args)
     model, tokenizer = getattr(train, name).train(
         model=model,
         tokenizer=tokenizer,
         gradient_checkpointing=args.gradient_checkpointing,
         output_dir=join(args.output, model.config.name_or_path),
-        dataset=load_dataset("parquet", data_files=args.dataset, split="train")
+        dataset=load_dataset("parquet", data_files=args.dataset, split="train"),
+        **train_args
     )

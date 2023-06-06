@@ -1,0 +1,240 @@
+import os
+from types import SimpleNamespace
+from typing import Dict, List
+
+from datasets import DownloadManager
+from peft import (
+    LoraConfig,
+    get_peft_model,
+    get_peft_model_state_dict,
+    set_peft_model_state_dict,
+)
+import torch
+from torch.utils.data import Dataset
+import transformers
+from transformers import AddedToken
+from transformers.trainer_utils import get_last_checkpoint
+from transformers.utils import logging
+from transformers.utils.hub import is_remote_url
+from types import MethodType
+
+from ...model.clima import ClimaConfig, ClimaForCausalLM
+from ...util import prepare_model_for_training
+from ..llama import load as llama_load, preprocess
+from .pretrain import DataCollatorForSupervisedDataset
+
+logger = logging.get_logger("transformers")
+
+def load(vision_tower="laion/CLIP-ViT-H-14-laion2B-s32B-b79K", pretrain_mm_mlp_adapter=None, *args, **kwargs):
+    model, tokenizer =  llama_load(
+        *args,
+        base_class=ClimaForCausalLM,
+        mask_token=AddedToken("<0x1A>" , lstrip=False, rstrip=False),
+        **kwargs
+    )
+
+    if pretrain_mm_mlp_adapter and is_remote_url(pretrain_mm_mlp_adapter):
+        pretrain_mm_mlp_adapter = DownloadManager().download(pretrain_mm_mlp_adapter)
+
+    model.config.model_type = ClimaConfig.model_type
+    processor, _ = model.get_model().initialize_vision_modules(
+        vision_tower=vision_tower,
+        mask_token_id=tokenizer.mask_token_id,
+        pretrain_mm_mlp_adapter=pretrain_mm_mlp_adapter
+    ).values()
+
+    return model, SimpleNamespace(text=tokenizer, image=processor)
+
+class LazySupervisedMultiModalDataset(Dataset):
+    """Dataset for supervised fine-tuning."""
+
+    def __init__(self, dataset, tokenizer, train_on_inputs=False, image_patches=1):
+        super(LazySupervisedMultiModalDataset, self).__init__()
+
+        self.tokenizer = tokenizer
+        self.dataset = dataset
+        self.image_patches = image_patches
+        self.train_on_inputs = train_on_inputs
+
+    def __len__(self):
+        return len(self.dataset) * 2 # data augmentation with both text and images
+
+    def __getitem__(self, i) -> Dict[str, torch.Tensor | Dict[str, torch.Tensor]]:
+        assert isinstance(i, int)
+        idx, use_text = divmod(i, 2)
+        item = self.dataset[idx]
+
+        if use_text:
+            image = self.tokenizer.image(text=item['caption'], return_tensors="pt", truncation=True)
+        else:
+            #image = Image.open(BytesIO(item['image']['bytes']))
+            image = self.tokenizer.image(images=item['image'], return_tensors='pt')
+
+        return dict(
+            input_ids=torch.LongTensor(item["input_ids"]),
+            labels=torch.LongTensor(item["labels"]),
+            image={k: v[0] for k, v in image.items()}
+        )
+
+def train(
+    output_dir: str,
+    model,
+    tokenizer,
+    dataset,
+    overwrite=False,
+    # training hyperparams
+    batch_size: int = 128,
+    micro_batch_size: int = 1,
+    num_epochs: int = 5, # not 10, because we use multimodal data augmentation (doubles data)
+    learning_rate: float = 3e-4,
+    gradient_checkpointing = False,
+    # lora hyperparams
+    lora_r: int = 64,
+    lora_alpha: int = 16,
+    lora_dropout: float = 0.05,
+    lora_target_modules: List[str] = [ # defaults to all linear layers of llama
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        'up_proj',
+        'down_proj',
+        'gate_proj'
+    ],
+    full_finetune_modules: List[str] = [
+        "embed_tokens",
+        "mm_projector",
+        "lm_head"
+    ],
+    # llm hyperparams
+    train_on_inputs: bool = False,  # if False, masks out inputs in loss
+    group_by_length: bool = False,  # faster when True, but produces an odd training loss curve
+    clip_only: bool = False, # use only the soft prompt of clip for conditioning
+):
+
+    world_size = int(os.environ.get("WORLD_SIZE", 1))
+    gradient_accumulation_steps = batch_size // micro_batch_size
+    if ddp := world_size != 1:
+        gradient_accumulation_steps = gradient_accumulation_steps // world_size
+
+    def prepare_dataset(dataset):
+        dataset = dataset.map(
+            preprocess,
+            batched=True,
+            fn_kwargs=dict(  # pyright: ignore
+                tokenizer=tokenizer.text,
+                train_on_inputs=train_on_inputs,
+                num_patches=(num_patches:=model.get_model().vision_tower[0].config.num_patches),
+                clip_only=clip_only
+            )
+        )
+        logger.info(f"Dataset size before filtering out too long examples: {len(dataset)}")
+        dataset = dataset.filter(lambda example: len(example['input_ids']) <= tokenizer.text.model_max_length)
+        logger.info(f"Dataset size after filtering out too long examples: {len(dataset)}")
+        return LazySupervisedMultiModalDataset(
+            tokenizer=tokenizer,
+            dataset=dataset,
+            train_on_inputs=train_on_inputs,
+            image_patches=num_patches
+        )
+
+    config = LoraConfig(
+        r=lora_r,
+        lora_alpha=lora_alpha,
+        target_modules=lora_target_modules,
+        modules_to_save=full_finetune_modules,
+        lora_dropout=lora_dropout,
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+    model = get_peft_model(prepare_model_for_training(
+        model=model,
+        modules_to_save=full_finetune_modules,
+        use_gradient_checkpointing=gradient_checkpointing),
+        peft_config=config
+   )
+
+    last_checkpoint = None
+    if os.path.isdir(output_dir) and not overwrite:
+        last_checkpoint = get_last_checkpoint(output_dir)
+        if last_checkpoint is None and len(os.listdir(output_dir)) > 0:
+            raise ValueError(
+                f"Output directory ({output_dir}) already exists and is not empty. "
+                "Use `overwrite` to overcome."
+            )
+        elif last_checkpoint is not None:
+            # Check the available weights and load them
+            checkpoint_name = os.path.join(
+                last_checkpoint, "pytorch_model.bin"
+            )  # Full checkpoint
+            if not os.path.exists(checkpoint_name):
+                checkpoint_name = os.path.join(
+                    last_checkpoint, "adapter_model.bin"
+                )  # only LoRA model - LoRA config above has to fit
+                last_checkpoint = (
+                    False  # So the trainer won't try loading its state
+                )
+            # The two files above have a different name depending on how they were saved, but are actually the same.
+            if os.path.exists(checkpoint_name):
+                logger.info(
+                    f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
+                    "the `output_dir` or add `overwrite` to train from scratch."
+                )
+                adapters_weights = torch.load(checkpoint_name)
+                model = set_peft_model_state_dict(model, adapters_weights)
+
+    trainer = transformers.Trainer(
+        model=model,
+        train_dataset=prepare_dataset(dataset),
+        args=transformers.TrainingArguments(
+            per_device_train_batch_size=micro_batch_size,
+            gradient_accumulation_steps=gradient_accumulation_steps,
+            warmup_steps=100,
+            num_train_epochs=num_epochs,
+            learning_rate=learning_rate,
+            fp16=True,
+            #bf16=True,
+            #tf32=True,
+            logging_steps=10,
+            optim="adamw_torch",
+            save_strategy="epoch",
+            output_dir=output_dir,
+            save_total_limit=1,
+            ddp_find_unused_parameters=False if ddp else None,
+            remove_unused_columns=False,
+            group_by_length=group_by_length,
+        ),
+        data_collator=DataCollatorForSupervisedDataset(tokenizer=tokenizer)
+    )
+
+    model.config.use_cache = False
+
+    # Overwrite state dict so only trainable parameters get saved during checkpointing
+    old_state_dict = model.state_dict
+    model.state_dict = (
+        lambda self, *_, **__: get_peft_model_state_dict(
+            self, old_state_dict()
+        )
+    ).__get__(model, type(model))
+
+    model = torch.compile(model)
+    trainer.train(resume_from_checkpoint=last_checkpoint)
+
+    # undo float casting to be able to maintain correct name of lm_head weights
+    if type(model.lm_head).__name__ == "CastOutputToFloat":
+        model.base_model.model.lm_head = model.lm_head[0]
+
+    # UGLY HACK: Add model type to PEFT config, so that we later know exactly which model to load (useful for clima)
+    config.save_pretrained = MethodType(
+        lambda self, *args, **kwargs: type(self).save_pretrained(
+            SimpleNamespace(**self.to_dict(), model_type=model.config.model_type),
+            *args,
+            **kwargs,
+        ),
+        config,
+    )
+
+    model.save_pretrained(output_dir)
+    trainer.save_state()
+
+    return model, tokenizer
