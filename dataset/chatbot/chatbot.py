@@ -1,4 +1,5 @@
 from typing import List
+from abc import ABC, abstractmethod
 import warnings
 
 import torch
@@ -7,7 +8,7 @@ from transformers import LlamaForCausalLM, LlamaTokenizer
 from transformers.pipelines.text_generation import TextGenerationPipeline
 
 # https://github.com/tatsu-lab/stanford_alpaca/blob/main/train.py
-PROMPTS = {
+ALPACA_PROMPTS = {
     "input": (
         "Below is an instruction that describes a task, paired with an input that provides further context. "
         "Write a response that appropriately completes the request.\n\n"
@@ -20,12 +21,18 @@ PROMPTS = {
     ),
 }
 
-class Alpaca():
-    def __init__(self, bs=1, model="chavinlo/alpaca-13b", prefix=None):
+WIZARD_PROMPT = (
+    "A chat between a curious user and an artificial intelligence assistant. "
+    "The assistant gives helpful, detailed, and polite answers to the user's questions. "
+    "USER: {data} ASSISTANT:"
+)
+
+class ChatBot(ABC):
+    def __init__(self, model, bs=1, prefix=None, **tokenizer_kwargs):
         self.pipeline = TextGenerationPipeline(
             batch_size=bs,
             model=LlamaForCausalLM.from_pretrained(model, torch_dtype=torch.float16),
-            tokenizer=LlamaTokenizer.from_pretrained(model, padding_side="left"),
+            tokenizer=LlamaTokenizer.from_pretrained(model, padding_side="left", **tokenizer_kwargs),
             device=current_device() if has_cuda() else -1
         )
         self.pipeline.model = torch.compile(self.pipeline.model)
@@ -34,21 +41,15 @@ class Alpaca():
     def __call__(self, *args, **kwargs):
         return self.generate(*args, **kwargs)
 
-    def _gen_prompts(self, instructions, inputs):
-        prompts = list()
-        for instruction, input in zip(instructions, inputs or [None] * len(instructions)):
-            if input is None:
-                prompts.append(PROMPTS["no_input"].format(instruction=instruction) + self.prefix)
-            else:
-                prompts.append(PROMPTS["input"].format(instruction=instruction, input=input) + self.prefix)
-
-        return prompts
+    @abstractmethod
+    def _gen_prompts(self):
+        """Construction of prompts is model specific"""
 
     def generate(self, instructions: str | List[str], inputs: str | List[str] = None):
         assert inputs is None or type(instructions) == type(inputs)
         prompts = self._gen_prompts(
-                [instructions] if isinstance(instructions, str) else instructions,
-                [inputs] if isinstance(inputs, str) else inputs
+            [instructions] if isinstance(instructions, str) else instructions,
+            [inputs] if isinstance(inputs, str) else inputs
         )
 
         # catch false-positive warnings on current transformers master
@@ -57,10 +58,12 @@ class Alpaca():
             # hyperparameters from https://github.com/tatsu-lab/stanford_alpaca/issues/35
             completions = [cmp[0]["generated_text"] for cmp in self.pipeline(
                 prompts,
-                temperature=0.7,
-                top_p=0.9,
+                prefix=self.pipeline.tokenizer.bos_token,
+                temperature=1,
+                top_p=0.95,
+                top_k=40,
                 num_beams=1,
-                max_new_tokens=600,
+                max_length=self.pipeline.tokenizer.model_max_length,
                 do_sample=True,
                 return_full_text=False,
                 eos_token_id=self.pipeline.tokenizer.eos_token_id,
@@ -71,3 +74,32 @@ class Alpaca():
 
         completions = [self.prefix + completion for completion in completions]
         return completions[0] if isinstance(instructions, str) else completions
+
+class WizardLM(ChatBot):
+    def __init__(self, *args, model="localmodels/WizardLM-13B-1.0", **kwargs):
+        super().__init__(*args, model=model, **kwargs)
+
+    def _gen_prompts(self, instructions, inputs):
+        prompts = list()
+        for instruction, input_ in zip(instructions, inputs or [None] * len(instructions)):
+            if input_ is None:
+                prompts.append(WIZARD_PROMPT.format(data=instruction) + " " + self.prefix.lstrip())
+            else:
+                prompts.append(WIZARD_PROMPT.format(data="\n\n".join([instruction, input_])) + " " + self.prefix.lstrip())
+
+        return prompts
+
+# alpaca implementation below is untested
+class Alpaca(ChatBot):
+    def __init__(self, *args, model="chavinlo/alpaca-13b", **kwargs):
+        super().__init__(*args, model=model, **kwargs)
+
+    def _gen_prompts(self, instructions, inputs):
+        prompts = list()
+        for instruction, input in zip(instructions, inputs or [None] * len(instructions)):
+            if input is None:
+                prompts.append(ALPACA_PROMPTS["no_input"].format(instruction=instruction) + self.prefix)
+            else:
+                prompts.append(ALPACA_PROMPTS["input"].format(instruction=instruction, input=input) + self.prefix)
+
+        return prompts

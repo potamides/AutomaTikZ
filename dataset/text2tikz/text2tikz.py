@@ -15,6 +15,7 @@ from threading import Lock
 from time import mktime
 from zipfile import ZipFile, is_zipfile
 
+from PIL import ImageOps
 from datasets import Features, Image, Value, builder
 from datasets.info import DatasetInfo
 from datasets.splits import Split, SplitGenerator
@@ -25,7 +26,7 @@ from pdfCropMargins import crop
 from regex import search
 from transformers import set_seed
 
-from alpaca import Alpaca
+from chatbot import WizardLM
 from text2tikz.loaders import (
     janosh_tikz,
     petarv_tikz,
@@ -37,8 +38,8 @@ from text2tikz.loaders import (
 logger = logging.get_logger("transformers")
 set_seed(0)
 
-PROMPT_PREFIX = "This image shows"
-PROMPT = "Generate a caption for the image that accurately depicts the desired result of the following question. Use only the information provided in the question and write a specific and concise caption, but avoid referring to sample images or code snippets."
+PROMPT_PREFIX, POSSIBLE_SUFFIX = '"Desired outcome:', '"'
+PROMPT = "Create a clear and specific caption for an image that depicts the desired outcome of the following question. Utilize all relevant details provided in the question, particularly focusing on the visual aspects. Avoid referencing any example images or code snippets. Ensure that your caption is comprehensive and accurate:"
 
 def batched(iterable, n):
     it = iter(iterable)
@@ -54,11 +55,8 @@ def restore_timestamps(zipname, extract_dir):
             date_time = mktime(f.date_time + (0, 0, -1))
             utime(fullpath, (date_time, date_time))
 
-def upper_first(string):
-    return string[:1].upper() + string[1:]
-
 lock = Lock()
-def tex2img(code, size=224, timeout=300):
+def tex2img(code, size=224, timeout=300, expand_to_square=True):
     codelines = code.split("\n")
     codelines.insert(1, r"\thispagestyle{empty}") # make sure we don't have page numbers in compiled pdf (for cropping)
 
@@ -72,13 +70,23 @@ def tex2img(code, size=224, timeout=300):
 
     with TemporaryDirectory() as tmpdirname:
         with NamedTemporaryFile(dir=tmpdirname, buffering=0) as tmpfile:
+            # compile
             tmpfile.write("\n".join(codelines).encode())
             try_compile(tmpfile.name)
+
+            # crop
             with lock: # pdfCropMargins is not threadsafe
                 crop(["-p", "0", "-g", "1", "-o", pdfname := f"{tmpfile.name}-cropped.pdf", f"{tmpfile.name}.pdf"], quiet=True)
             #run(["pdfcrop", pdfname := f"{tmpfile.name}.pdf", pdfname], check=True, cwd=tmpdirname)
+
+            # rasterize
             image = convert_from_path(pdfname, size=size, single_file=True)[0]
-            image.save(imgByteArr:=BytesIO(), format=image.format)
+            img_format = image.format
+            if expand_to_square:
+                image = ImageOps.pad(image, (size, size), color='white')
+
+            # save
+            image.save(imgByteArr:=BytesIO(), format=img_format)
 
             return imgByteArr.getvalue()
 
@@ -88,7 +96,7 @@ class TikZConfig(builder.BuilderConfig):
     def __init__(self, *args, bs=8, **kwargs):
         super().__init__(*args, **kwargs)
         self.bs = bs
-        self.alpaca = Alpaca(bs=bs, prefix=PROMPT_PREFIX)
+        self.chatbot = WizardLM(bs=bs, prefix=PROMPT_PREFIX, model_max_length=512) # tight on memory
         self.data_urls = {
             "PetarV-/TikZ": "https://github.com/PetarV-/TikZ/archive/refs/heads/master.zip",
             "janosh/tikz": "https://github.com/janosh/tikz/archive/refs/heads/main.zip",
@@ -115,6 +123,7 @@ class TikZ(builder.GeneratorBasedBuilder):
             "code": Value("string"),
             "image": Image(),
             "uri": Value("string"),
+            "origin": Value("string"),
             "date": Value("timestamp[us]"),
         }
 
@@ -163,7 +172,7 @@ class TikZ(builder.GeneratorBasedBuilder):
         truncate them to the half of the model maximum length to leave enough
         space for generating text.
         """
-        tokenizer = self.config.alpaca.pipeline.tokenizer
+        tokenizer = self.config.chatbot.pipeline.tokenizer
         return tokenizer.decode(
             tokenizer(description.strip(),
             truncation=True,
@@ -175,8 +184,10 @@ class TikZ(builder.GeneratorBasedBuilder):
         instructions = [instruction] * len(examples)
         inputs = [self._truncate(ex["caption"]) for ex in examples]
 
-        for example, caption in zip(examples, self.config.alpaca(instructions, inputs)):
-            example['caption'] = upper_first(caption.removeprefix(self.config.alpaca.prefix).strip()).split("\n")[0]
+        for example, caption in zip(examples, self.config.chatbot(instructions, inputs)):
+            example['caption'] = (
+                caption.strip().removeprefix(self.config.chatbot.prefix).removesuffix(POSSIBLE_SUFFIX)
+            ).split("\n")[0].strip().removesuffix(POSSIBLE_SUFFIX).strip()
         return examples
 
     @classmethod
@@ -220,8 +231,9 @@ class TikZ(builder.GeneratorBasedBuilder):
 
             with ThreadPool(self.config.bs) as p:
                 for example in skip_on_error(p.imap_unordered(self._compile, loader)):
+                    example["origin"] = name
                     yield idx, example
                     idx += 1
 
         if skipped:
-            logger.warn(f"Coudn't compile {skipped}/{idx} documents.") # pyright: ignore
+            logger.warn(f"Couldn't compile {skipped}/{skipped+idx-1} documents.") # pyright: ignore
