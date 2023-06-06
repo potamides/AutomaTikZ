@@ -59,7 +59,7 @@ def train(
     def preprocess_function(examples):
         instructions = list(examples['caption'])
 
-        model_inputs = tokenizer(instructions)#, truncation=True)
+        model_inputs = tokenizer(instructions, truncation=True, max_length=tokenizer.model_max_length)
         # Tokenize targets with the `text_target` keyword argument
         labels = tokenizer(text_target=examples['code'])#, truncation=True)
         model_inputs["labels"] = labels["input_ids"]

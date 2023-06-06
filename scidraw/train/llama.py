@@ -16,57 +16,9 @@ from transformers import AddedToken
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import logging
 
+from ..util import prepare_model_for_training
+
 logger = logging.get_logger("transformers")
-
-def prepare_model_for_training(
-    model,
-    output_embedding_layer_name="lm_head",
-    use_gradient_checkpointing=False,
-    layer_norm_names=["layer_norm", "layernorm"],
-    modules_to_save=[]
-):
-    for name, param in model.named_parameters():
-        # freeze base model's layers
-        param.requires_grad = False
-
-        # cast layer norm in fp32 for stability for float16 models
-        if param.ndim == 1 and any(layer_norm_name in name for layer_norm_name in layer_norm_names):
-            param.data = param.data.to(torch.float32)
-        # fix ValueError: Attempting to unscale FP16 gradients.
-        elif any(module in name for module in modules_to_save):
-            param.data = param.data.to(torch.float32)
-
-    if use_gradient_checkpointing:
-        # For backward compatibility
-        if hasattr(model, "enable_input_require_grads"):
-            model.enable_input_require_grads()
-        else:
-
-            def make_inputs_require_grad(module, input, output):
-                output.requires_grad_(True)
-
-            model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
-
-        # enable gradient checkpointing for memory efficiency
-        model.gradient_checkpointing_enable()
-
-    if hasattr(model, output_embedding_layer_name):
-        output_embedding_layer = getattr(model, output_embedding_layer_name)
-        input_dtype = output_embedding_layer.weight.dtype
-
-        class CastOutputToFloat(torch.nn.Sequential):
-            r"""
-            Manually cast to the expected dtype of the lm_head as sometimes there is a final layer norm that is casted
-            in fp32
-
-            """
-
-            def forward(self, x):
-                return super().forward(x.to(input_dtype)).to(torch.float32)
-
-        setattr(model, output_embedding_layer_name, CastOutputToFloat(output_embedding_layer))
-
-    return model
 
 @contextmanager
 def temporary_change_attributes(something, **kwargs):
@@ -79,26 +31,70 @@ def temporary_change_attributes(something, **kwargs):
         for k, v in previous_values.items():
             setattr(something, k, v)
 
-def load(base_model="decapoda-research/llama-{size}-hf", size="7b"):
+def load(base_model="decapoda-research/llama-{size}-hf", size="7b", base_class=LlamaForCausalLM, **tokenizer_kwargs):
     base_model = base_model.format(size=size)
     token = lambda s: AddedToken(s, lstrip=False, rstrip=False)
-    model = LlamaForCausalLM.from_pretrained(base_model,
-       pad_token_id=0,
-       bos_token_id=1,
-       eos_token_id=2,
-       torch_dtype=torch.float16
+    model = base_class.from_pretrained(base_model,
+        pad_token_id=0,
+        bos_token_id=1,
+        eos_token_id=2,
+        torch_dtype=torch.float16
     )
     tokenizer = LlamaTokenizer.from_pretrained(base_model,
-       model_max_length=1024, # 1536
-       unk_token=token("<unk>"),
-       bos_token=token("<s>"),
-       eos_token=token("</s>"),
-       pad_token=token("<unk>"), # same as unk_token
-       sep_token=token("<0x1D>"), # ascii group separator
-       padding_side="left" # Allow batched inference
+        model_max_length=1024, # 1536
+        unk_token=token("<unk>"),
+        bos_token=token("<s>"),
+        eos_token=token("</s>"),
+        pad_token=token("<unk>"), # same as unk_token
+        sep_token=token("<0x1D>"), # ascii group separator
+        padding_side="right", # Note: only for training, need to change to "left" for batched inference
+        **tokenizer_kwargs
     )
 
     return model, tokenizer
+
+def preprocess(examples, tokenizer, train_on_inputs=False, clip_only=False, num_patches=0, min_len=15):
+    """Construct model inputs and tokenize them"""
+    min_len = min_len + num_patches
+    patch_prefix = num_patches * tokenizer.mask_token if num_patches else ""
+
+    if clip_only:
+        assert num_patches, "When only using CLIP to process inputs the model needs to be multimodal!"
+
+    def tokenize(texts, add_bos_token=True, add_eos_token=False, add_sep_token=False):
+        with temporary_change_attributes(tokenizer, add_bos_token=add_bos_token, add_eos_token=add_eos_token):
+            result = tokenizer(texts)
+            if add_sep_token:
+                for input_ids, attention_mask in zip(result["input_ids"], result["attention_mask"]):
+                    input_ids.append(tokenizer.sep_token_id)
+                    attention_mask.append(1)
+            result["labels"] = deepcopy(result["input_ids"])
+
+        return result
+
+    def try_truncate(ids, max_len):
+        while len(ids) > max_len and not len(ids) <= min_len:
+            for idx in reversed(range(len(ids))):
+                # make sure to not remove special tokens
+                if ids[idx] not in tokenizer.all_special_ids:
+                    ids.pop(idx)
+                    break
+            else:
+                break
+        return ids
+
+    captions = tokenize([patch_prefix + ("" if clip_only else caption) for caption in examples['caption']], add_sep_token=True)
+    codesnippets = tokenize(examples['code'], add_bos_token=False, add_eos_token=True)
+
+    if not train_on_inputs:
+        captions["labels"] = [[-100] * len(labels) for labels in captions["labels"]]
+
+    for key, val in codesnippets.items():
+        for instruction_ids, code_ids in zip(captions[key], val):
+            # try to truncate caption, when len(caption) + len(code) > tokenizer.model_max_length
+            try_truncate(instruction_ids, tokenizer.model_max_length - len(code_ids)).extend(code_ids)
+
+    return captions
 
 # https://github.com/tloen/alpaca-lora#official-weights
 def train(
@@ -113,16 +109,18 @@ def train(
     num_epochs: int = 10,
     learning_rate: float = 3e-4,
     gradient_checkpointing = False,
-    #val_set_size: int = 2000,
     # lora hyperparams
-    lora_r: int = 16,
+    lora_r: int = 64,
     lora_alpha: int = 16,
     lora_dropout: float = 0.05,
-    lora_target_modules: List[str] = [
+    lora_target_modules: List[str] = [ # defaults to all linear layers of llama
         "q_proj",
         "k_proj",
         "v_proj",
-        "o_proj"
+        "o_proj",
+        'up_proj',
+        'down_proj',
+        'gate_proj'
     ],
     full_finetune_modules: List[str] = [
         "embed_tokens",
@@ -136,30 +134,6 @@ def train(
     gradient_accumulation_steps = batch_size // micro_batch_size
     if ddp := world_size != 1:
         gradient_accumulation_steps = gradient_accumulation_steps // world_size
-
-    def tokenize(texts, add_bos_token=True, add_eos_token=False, add_sep_token=False):
-        with temporary_change_attributes(tokenizer, add_bos_token=add_bos_token, add_eos_token=add_eos_token):
-            result = tokenizer(texts)
-            if add_sep_token:
-                for input_ids, attention_mask in zip(result["input_ids"], result["attention_mask"]):
-                    input_ids.append(tokenizer.sep_token_id)
-                    attention_mask.append(1)
-            result["labels"] = deepcopy(result["input_ids"])
-
-        return result
-
-    def preprocess_function(examples):
-        captions = tokenize(examples['caption'], add_sep_token=True)
-        codesnippets = tokenize(examples['code'], add_bos_token=False, add_eos_token=True)
-
-        if not train_on_inputs:
-            captions["labels"] = [[-100] * len(labels) for labels in captions["labels"]]
-
-        for key, val in codesnippets.items():
-          for instruction_ids, code_ids in zip(captions[key], val):
-            instruction_ids.extend(code_ids)
-
-        return captions
 
     config = LoraConfig(
         r=lora_r,
@@ -207,9 +181,13 @@ def train(
                 model = set_peft_model_state_dict(model, adapters_weights)
 
     train_data = dataset.map(
-        preprocess_function,
+        preprocess,
         batched=True,
         remove_columns=dataset.column_names,
+        fn_kwargs=dict(  # pyright: ignore
+            tokenizer=tokenizer,
+            train_on_inputs=train_on_inputs
+        )
     )
     logger.info(f"Dataset size before filtering out too long examples: {len(train_data)}")
     train_data = train_data.filter(lambda example: len(example['input_ids']) <= tokenizer.model_max_length)
