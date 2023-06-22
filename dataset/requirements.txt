@@ -9,3 +9,7 @@ openpyxl~=3.1.2
 pdf2image~=1.16.3
 pdfCropMargins~=1.1.18
 Pillow~=9.5.0
+svg2tikz~=2.0.0
+#TexSoup~=0.3.1
+https://github.com/alvinwan/TexSoup/archive/c91a14a0019ff7df197e71c906bc0403eddf80dc.zip
+regex

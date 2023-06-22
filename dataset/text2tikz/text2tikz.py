@@ -6,14 +6,10 @@ from functools import partial
 from io import BytesIO
 from itertools import islice
 from multiprocessing.pool import ThreadPool
-from os import utime
-from os.path import join
 from re import sub
 from subprocess import CalledProcessError, DEVNULL, TimeoutExpired, run
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from threading import Lock
-from time import mktime
-from zipfile import ZipFile, is_zipfile
 
 from PIL import ImageOps
 from datasets import Features, Image, Value, builder
@@ -24,10 +20,12 @@ from pdf2image.exceptions import PDFPageCountError
 from pdf2image.pdf2image import convert_from_path
 from pdfCropMargins import crop
 from regex import search
-from transformers import set_seed
 
 from chatbot import WizardLM
 from text2tikz.loaders import (
+    arxiv,
+    gpt4,
+    chatgpt,
     janosh_tikz,
     petarv_tikz,
     tex_stackexchange_com,
@@ -36,7 +34,6 @@ from text2tikz.loaders import (
 )
 
 logger = logging.get_logger("transformers")
-set_seed(0)
 
 PROMPT_PREFIX, POSSIBLE_SUFFIX = '"Desired outcome:', '"'
 PROMPT = "Create a clear and specific caption for an image that depicts the desired outcome of the following question. Utilize all relevant details provided in the question, particularly focusing on the visual aspects. Avoid referencing any example images or code snippets. Ensure that your caption is comprehensive and accurate:"
@@ -46,17 +43,8 @@ def batched(iterable, n):
     while (batch := tuple(islice(it, n))):
         yield batch
 
-# https://stackoverflow.com/a/48129136
-def restore_timestamps(zipname, extract_dir):
-    """zipfile doesn't preserve timestamps so we have to manually fix it"""
-    if is_zipfile(zipname):
-        for f in ZipFile(zipname, 'r').infolist():
-            fullpath = join(extract_dir, f.filename)
-            date_time = mktime(f.date_time + (0, 0, -1))
-            utime(fullpath, (date_time, date_time))
-
 lock = Lock()
-def tex2img(code, size=224, timeout=300, expand_to_square=True):
+def tex2img(code, size=224, timeout=120, expand_to_square=True):
     codelines = code.split("\n")
     codelines.insert(1, r"\thispagestyle{empty}") # make sure we don't have page numbers in compiled pdf (for cropping)
 
@@ -76,7 +64,7 @@ def tex2img(code, size=224, timeout=300, expand_to_square=True):
 
             # crop
             with lock: # pdfCropMargins is not threadsafe
-                crop(["-p", "0", "-g", "1", "-o", pdfname := f"{tmpfile.name}-cropped.pdf", f"{tmpfile.name}.pdf"], quiet=True)
+                crop(["-c", "gb", "-p", "0", "-g", "1", "-o", pdfname := f"{tmpfile.name}-cropped.pdf", f"{tmpfile.name}.pdf"], quiet=True)
             #run(["pdfcrop", pdfname := f"{tmpfile.name}.pdf", pdfname], check=True, cwd=tmpdirname)
 
             # rasterize
@@ -100,14 +88,22 @@ class TikZConfig(builder.BuilderConfig):
         self.data_urls = {
             "PetarV-/TikZ": "https://github.com/PetarV-/TikZ/archive/refs/heads/master.zip",
             "janosh/tikz": "https://github.com/janosh/tikz/archive/refs/heads/main.zip",
+            "chatgpt": "https://github.com/evanthebouncy/chatgpt-svg/raw/master/data.tsv",
+            "arxiv": [
+                f"https://github.com/potamides/arxiv-latex-extract/releases/latest/download/arxiv-part{i}.tar.gz"
+                for i in range(5)
+            ],
             "tex.stackexchange.com": "https://archive.org/download/stackexchange/tex.stackexchange.com.7z/Posts.xml",
         }
         self.generators = {
             "PetarV-/TikZ": petarv_tikz.load,
             "janosh/tikz": janosh_tikz.load,
+            "chatgpt": chatgpt.load,
+            "gpt4": gpt4.load,
             "texample.net": texample_net.load,
             "tikz.net": tikz_net.load,
             "pgfplots.net": tikz_net.load, # tikz.net downloader also works for this site
+            "arxiv": arxiv.load,
             "tex.stackexchange.com": lambda xml_path: tex_stackexchange_com.TeXExchangeParser(xml_path).load()
         }
 
@@ -132,12 +128,8 @@ class TikZ(builder.GeneratorBasedBuilder):
             features=Features(features),
         )
     def _split_generators(self, dl_manager):
-        urls_to_download = self.config.data_urls
-        downloaded_files = dl_manager.download(urls_to_download)
-        extracted_files = dl_manager.extract(downloaded_files)
-
-        for name, zipname in downloaded_files.items():
-            restore_timestamps(zipname, extracted_files[name])
+        urls_to_download = self.config.data_urls # type: ignore
+        extracted_files = dl_manager.download_and_extract(urls_to_download)
 
         return [
             SplitGenerator(
@@ -145,24 +137,39 @@ class TikZ(builder.GeneratorBasedBuilder):
             ),
         ]
 
-    def _remove_comments(self, text):
-        if text.lstrip().startswith("%"):
+    def _filter_comments(self, text, patterns=r"\{}$&#&_" + "=[]"):
+        """
+        Removes all comments that match the patterns. By default patterns are
+        characters with catcodes 1-8 and a few other symbols often used inside
+        TikZ code.
+
+        This may be useful for TeX StackExchange, because answer code retrieved
+        from there sometimes retrains the faulty code from the question,
+        commented out. This is an attempt to remove such comments.
+        """
+        if text.lstrip().startswith("%") and any(pattern in text for pattern in patterns):
             return ""
         match = search(r"(?<![^\\]\\(\\{2})*)%", text)
         if match:
             end = match.end()
-            endpos = end - 1 if not text[end - 2].strip() else end
-            return text[:endpos].rstrip() + "\n"
-        else:
-            return text
+            if any(pattern in text[end:] for pattern in patterns):
+                endpos = end - 1 if not text[end - 2].strip() else end
+                return text[:endpos].rstrip() + "\n"
+        return text
 
-    def _clean(self, example):
+    def _clean(self, example, full=False):
         for key, maybe_text in example.items():
             try:
                 example[key] = sub(r"\r\n|\r", r"\n", maybe_text).strip() # normalize newlines
             except TypeError:
                 pass
-        example["code"] = "".join(self._remove_comments(line) for line in example["code"].splitlines(keepends=True))
+        # first remove leading comments only...
+        example["code"] = sub(r"^(%.*\n)*", "", example["code"]).strip()
+        if full: # ...and maybe also remove all other comments
+            example["code"] = "".join(
+                self._filter_comments(line)
+                for line in example["code"].splitlines(keepends=True)
+            ).strip()
 
         return example
 
@@ -172,7 +179,7 @@ class TikZ(builder.GeneratorBasedBuilder):
         truncate them to the half of the model maximum length to leave enough
         space for generating text.
         """
-        tokenizer = self.config.chatbot.pipeline.tokenizer
+        tokenizer = self.config.chatbot.pipeline.tokenizer # type: ignore
         return tokenizer.decode(
             tokenizer(description.strip(),
             truncation=True,
@@ -184,9 +191,9 @@ class TikZ(builder.GeneratorBasedBuilder):
         instructions = [instruction] * len(examples)
         inputs = [self._truncate(ex["caption"]) for ex in examples]
 
-        for example, caption in zip(examples, self.config.chatbot(instructions, inputs)):
+        for example, caption in zip(examples, self.config.chatbot(instructions, inputs)): # type: ignore
             example['caption'] = (
-                caption.strip().removeprefix(self.config.chatbot.prefix).removesuffix(POSSIBLE_SUFFIX)
+                caption.strip().removeprefix(self.config.chatbot.prefix).removesuffix(POSSIBLE_SUFFIX) # type: ignore
             ).split("\n")[0].strip().removesuffix(POSSIBLE_SUFFIX).strip()
         return examples
 
@@ -196,26 +203,26 @@ class TikZ(builder.GeneratorBasedBuilder):
         return ex
 
     def _generate_examples(self, datasets):
-        all_tikz, generators = set(), self.config.generators
+        all_tikz, generators = set(), self.config.generators # type: ignore
         skipped, idx = 0, 1
 
-        def preprocess(load, *args, **kwargs):
+        def preprocess(load, full_clean=False, *args, **kwargs):
             for ex in load(*args, **kwargs):
-                ex = self._clean(ex)
+                ex = self._clean(ex, full=full_clean)
                 if ex['code'] not in all_tikz:
                     all_tikz.add(ex['code'])
                     yield ex
 
-        def captionize(loader, prompt):
-            for batch in batched(loader, self.config.bs):
-                yield from self._captionize(prompt, batch)
+        def captionize(loader):
+            for batch in batched(loader, self.config.bs): # type: ignore
+                yield from self._captionize(PROMPT, batch)
 
         def skip_on_error(loader):
             nonlocal skipped
             while True:
                 try:
                     yield next(loader)
-                except (ValueError, PDFPageCountError, TimeoutExpired):
+                except (ValueError, PDFPageCountError, TimeoutExpired, CalledProcessError):
                     skipped += 1
                 except StopIteration:
                     break
@@ -223,17 +230,19 @@ class TikZ(builder.GeneratorBasedBuilder):
         for name, load in zip(generators.keys(), (partial(preprocess, load) for load in generators.values())):
             logger.debug("Processing examples from '%s'.", name)
             match name:
-                case "PetarV-/TikZ" | "janosh/tikz": loader = load(datasets[name])
-                case "tex.stackexchange.com": loader = captionize(load(datasets[name]), PROMPT)
-                case "texample.net" | "tikz.net": loader = load()
+                case "PetarV-/TikZ" | "janosh/tikz": loader = load(directory=datasets[name])
+                case "arxiv": loader = load(directories=datasets[name])
+                case "chatgpt": loader = load(tsv=datasets[name])
+                case "tex.stackexchange.com": loader = captionize(load(xml_path=datasets[name], full_clean=False))
+                case "texample.net" | "tikz.net" | "gpt4": loader = load()
                 case "pgfplots.net": loader = load(base_url=f"https://{name}")
                 case _: raise ValueError(f'Source "{name}" not known!')
 
-            with ThreadPool(self.config.bs) as p:
+            with ThreadPool(self.config.bs) as p: # type: ignore
                 for example in skip_on_error(p.imap_unordered(self._compile, loader)):
                     example["origin"] = name
                     yield idx, example
                     idx += 1
 
         if skipped:
-            logger.warn(f"Couldn't compile {skipped}/{skipped+idx-1} documents.") # pyright: ignore
+            logger.warning(f"Couldn't compile {skipped}/{skipped+idx-1} documents.")
