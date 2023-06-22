@@ -224,7 +224,7 @@ def train(
     if type(model.lm_head).__name__ == "CastOutputToFloat":
         model.base_model.model.lm_head = model.lm_head[0]
 
-    # UGLY HACK: Add model type to PEFT config, so that we later know exactly which model to load (useful for clima)
+    # UGLY HACK: Add model type to PEFT config, so that we later know exactly which model to load (needed for clima)
     config.save_pretrained = MethodType(
         lambda self, *args, **kwargs: type(self).save_pretrained(
             SimpleNamespace(**self.to_dict(), model_type=model.config.model_type),

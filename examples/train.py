@@ -70,7 +70,7 @@ if __name__ == "__main__":
         args.output = join(args.output, "debug")
 
     if name == "clima":
-        assert args.projector, "CLiMA needs a pretrained adapter before fine-tuning!" 
+        assert args.projector, "CLiMA needs a pretrained adapter before fine-tuning!"
         load_args['pretrain_mm_mlp_adapter'] = args.projector
         train_args['clip_only'] = args.clip_only
 
