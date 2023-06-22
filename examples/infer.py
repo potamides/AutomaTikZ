@@ -18,7 +18,7 @@ from transformers import (
 from transformers.utils.hub import get_file_from_repo, is_remote_url
 
 from scidraw import train
-from scidraw.infer import TikZGenerator
+from scidraw.infer import TikzGenerator
 from scidraw.model.clima import register
 from scidraw.util import merge_and_unload
 
@@ -74,14 +74,14 @@ def parse_args():
 
 if __name__ == "__main__":
     set_seed(0)
-    generate = TikZGenerator(*load(parse_args().path))
+    generate = TikzGenerator(*load(parse_args().path))
     desc = dict(
         caption="the caption",
         image="optional input fed into CLIP, defaults to the caption (can be a Pillow Image, a URI to an image, or a caption)"
     )
 
     if flags.interactive:
-        print("generate(*args, **kwargs):", str(TikZGenerator.generate.__doc__).strip())
+        print("generate(*args, **kwargs):", str(TikzGenerator.generate.__doc__).strip())
     else:
         print("Starting a REPL for generating TikZ. Arguments:", *[f"\t{k}: {v}" for k, v in desc.items()], sep="\n")
         while True:

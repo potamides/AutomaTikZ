@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+
 from peft.tuners.lora import LoraLayer
 from peft.utils import transpose
 import torch
@@ -86,3 +88,15 @@ def find_all_linear_names(model, exclude=["lm_head"]):
         if isinstance(module, Linear) and all(ex not in name for ex in exclude):
             lora_module_names.add(name.split('.')[-1])
     return list(lora_module_names)
+
+@contextmanager
+def optional_dependencies(error: str = "ignore"):
+    assert error in {"raise", "warn", "ignore"}
+    try:
+        yield None
+    except ImportError as e:
+        if error == "raise":
+            raise e
+        elif error == "warn":
+            msg = f'Missing optional dependency "{e.name}". Use pip or conda to install.'
+            print(f'Warning: {msg}')

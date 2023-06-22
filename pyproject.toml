@@ -36,6 +36,12 @@ dynamic = ["version"]
 [project.urls]
 repository = "https://github.com/potamides/SciDraw"
 
+[project.optional-dependencies]
+pdf = [
+  "pdfCropMargins~=1.1",
+  "pdf2image~=1.16",
+]
+
 [tool.setuptools_scm]
 write_to = "scidraw/_version.py"
 parentdir_prefix_version = "scidraw-"
