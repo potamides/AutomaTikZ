@@ -53,7 +53,7 @@ def load(base_model="decapoda-research/llama-{size}-hf", size="7b", base_class=L
 
     return model, tokenizer
 
-def preprocess(examples, tokenizer, train_on_inputs=False, clip_only=False, num_patches=0, min_len=15):
+def preprocess(examples, tokenizer, train_on_inputs=False, clip_only=False, num_patches=0, min_len=32):
     """Construct model inputs and tokenize them"""
     min_len = min_len + num_patches
     patch_prefix = num_patches * tokenizer.mask_token if num_patches else ""
