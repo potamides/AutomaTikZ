@@ -16,7 +16,7 @@ keywords = [
   "Natural Language Generation",
   "Text-to-Image",
 ]
-license = {text = "MIT License"}
+license = {text = "Apache-2.0 License"}
 dependencies = [
   "datasets~=2.11.0",
   "sentencepiece~=0.1.97",
