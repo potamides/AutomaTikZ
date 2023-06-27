@@ -1,13 +1,32 @@
 from collections import Counter
-
-from datasets import Features, Sequence, Value
-from nltk.util import ngrams
-from pygments.token import Name, Comment, Text
+from itertools import chain, tee
 
 from crystalbleu import corpus_bleu
+from datasets import Features, Sequence, Value
 import evaluate
 from pygments.lexers.markup import TexLexer
+from pygments.token import Comment, Name, Text
 from sacremoses import MosesTokenizer
+
+
+# adopted from nltk
+def pad_sequence(sequence, n, pad_left=False, pad_right=False, left_pad_symbol=None, right_pad_symbol=None):
+    sequence = iter(sequence)
+    if pad_left:
+        sequence = chain((left_pad_symbol,) * (n - 1), sequence)
+    if pad_right:
+        sequence = chain(sequence, (right_pad_symbol,) * (n - 1))
+    return sequence
+
+# adopted from nltk
+def ngrams(sequence, n, **kwargs):
+    sequence = pad_sequence(sequence, n, **kwargs)
+    iterables = tee(sequence, n)
+
+    for i, sub_iterable in enumerate(iterables):  # For each window,
+        for _ in range(i):  # iterate through every order of ngrams
+            next(sub_iterable, None)  # generate the ngrams within the window.
+    return zip(*iterables)  # Unpack and flattens the iterables.
 
 class CrystalBLEU(evaluate.Metric):
     """Wrapper around https://github.com/sola-st/crystalbleu (adapted for LaTeX)"""
@@ -29,12 +48,10 @@ class CrystalBLEU(evaluate.Metric):
         return evaluate.MetricInfo(
             description=str(self.__doc__),
             citation="",
-            features=Features(
-                {
-                    "references": Sequence(Value("string")),
-                    "candidates": Value("string"),
-                }
-            ),
+            features=Features(dict(
+                references=Sequence(Value("string")),
+                predictions=Value("string"),
+            )),
         )
 
     def _tokenize(self, text):
@@ -48,11 +65,11 @@ class CrystalBLEU(evaluate.Metric):
 
         return tokens
 
-    def _compute(self, references, candidates):
+    def _compute(self, references, predictions):
         return {
             "CrystalBLEU": corpus_bleu(
                 list_of_references=[[self._tokenize(ref) for ref in refs] for refs in references],
-                hypotheses=[self._tokenize(c) for c in candidates],
+                hypotheses=[self._tokenize(c) for c in predictions],
                 ignoring=self.trivially_shared_ngrams
             )
         }
