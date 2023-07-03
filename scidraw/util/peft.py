@@ -1,7 +1,15 @@
+from os.path import isfile, join
+
+from peft import PeftModel, get_peft_model_state_dict, set_peft_model_state_dict
 from peft.tuners.lora import LoraLayer
-from peft.utils import transpose
+from peft.utils import WEIGHTS_NAME as ADAPTER_WEIGHTS_NAME, transpose
 import torch
 from torch.nn import Linear
+from transformers import Trainer
+from transformers.utils import logging
+
+logger = logging.get_logger("transformers")
+
 
 # Backported to peft 0.2
 def merge_and_unload(lora_model):
@@ -12,21 +20,22 @@ def merge_and_unload(lora_model):
         except AttributeError:
             continue
         if isinstance(target, LoraLayer):
-            bias = target.bias is not None
-            new_module = Linear(target.in_features, target.out_features, bias=bias)
+            bias = target.bias is not None # type: ignore
+            new_module = Linear(target.in_features, target.out_features, bias=bias) # type: ignore
 
             # manually merge if not merged
             if not target.merged:
-                if target.r > 0:
-                    target.weight.data += (
-                        transpose(target.lora_B.weight @ target.lora_A.weight, target.fan_in_fan_out)
-                        * target.scaling
-                    ).to(target.weight.dtype)
+                if target.r > 0: # type: ignore
+                    target.weight.data += ( # type: ignore
+                        transpose(target.lora_B.weight @ target.lora_A.weight, target.fan_in_fan_out) # type: ignore
+                        * target.scaling # type: ignore
+                   ).to(target.weight.dtype) # type: ignore
                 target.merged = True
 
             lora_model._replace_module(parent, target_name, new_module, target)
 
     return lora_model.model
+
 
 # Adopted from peft int8 code, adapted for float16 trainig
 def prepare_model_for_training(
@@ -69,7 +78,6 @@ def prepare_model_for_training(
             r"""
             Manually cast to the expected dtype of the lm_head as sometimes there is a final layer norm that is casted
             in fp32
-
             """
 
             def forward(self, x):
@@ -79,6 +87,7 @@ def prepare_model_for_training(
 
     return model
 
+
 # adopted from https://github.com/artidoro/qlora/blob/main/qlora.py
 def find_all_linear_names(model, exclude=["lm_head"]):
     lora_module_names = set()
@@ -86,3 +95,37 @@ def find_all_linear_names(model, exclude=["lm_head"]):
         if isinstance(module, Linear) and all(ex not in name for ex in exclude):
             lora_module_names.add(name.split('.')[-1])
     return list(lora_module_names)
+
+
+# adopted from https://github.com/huggingface/transformers/issues/24252#issue-1755191070
+class PeftTrainer(Trainer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        if isinstance(self.model, PeftModel):
+            # Overwrite state dict so only trainable parameters get saved during checkpointing
+            # https://github.com/huggingface/peft/issues/96
+            old_state_dict = self.model.state_dict
+            self.model.state_dict = (
+                lambda self, *_, **__: get_peft_model_state_dict(
+                    self, old_state_dict()
+                )
+            ).__get__(self.model, type(self.model))
+
+    def _load_from_peft_checkpoint(self, resume_from_checkpoint, model):
+        if not isfile(adapter_weights_file:=join(resume_from_checkpoint, ADAPTER_WEIGHTS_NAME)):
+            raise ValueError(f"Can't find a valid checkpoint at {resume_from_checkpoint}")
+
+        if model is None:
+            model = self.model
+        if isinstance(model, PeftModel):
+            adapters_weights = torch.load(adapter_weights_file)
+            model = set_peft_model_state_dict(model, adapters_weights)
+        else:
+            raise ValueError(f"Found peft checkpoint at {resume_from_checkpoint}, but model isn't a peft model")
+
+    def _load_from_checkpoint(self, resume_from_checkpoint, model=None):
+        try:
+            return self._load_from_peft_checkpoint(resume_from_checkpoint, model=model)
+        except ValueError:
+            return super()._load_from_checkpoint(resume_from_checkpoint, model=model)

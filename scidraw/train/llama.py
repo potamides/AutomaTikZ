@@ -3,20 +3,19 @@ from copy import deepcopy
 import os
 from typing import List
 
-from peft import (
-    LoraConfig,
-    get_peft_model,
-    get_peft_model_state_dict,
-    set_peft_model_state_dict,
-)
+from peft import LoraConfig, get_peft_model
 import torch
-from transformers import LlamaForCausalLM, LlamaTokenizer
-import transformers
-from transformers import AddedToken
+from transformers import (
+    AddedToken,
+    DataCollatorForSeq2Seq,
+    LlamaForCausalLM,
+    LlamaTokenizer,
+    TrainingArguments,
+)
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import logging
 
-from ..util import prepare_model_for_training
+from ..util import PeftTrainer, prepare_model_for_training
 
 logger = logging.get_logger("transformers")
 
@@ -160,25 +159,10 @@ def train(
                 "Use `overwrite` to overcome."
             )
         elif last_checkpoint is not None:
-            # Check the available weights and load them
-            checkpoint_name = os.path.join(
-                last_checkpoint, "pytorch_model.bin"
-            )  # Full checkpoint
-            if not os.path.exists(checkpoint_name):
-                checkpoint_name = os.path.join(
-                    last_checkpoint, "adapter_model.bin"
-                )  # only LoRA model - LoRA config above has to fit
-                last_checkpoint = (
-                    False  # So the trainer won't try loading its state
-                )
-            # The two files above have a different name depending on how they were saved, but are actually the same.
-            if os.path.exists(checkpoint_name):
-                logger.info(
-                    f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
-                    "the `output_dir` or add `overwrite` to train from scratch."
-                )
-                adapters_weights = torch.load(checkpoint_name)
-                model = set_peft_model_state_dict(model, adapters_weights)
+            logger.info(
+                f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
+                "the `output_dir` or add `overwrite` to train from scratch."
+            )
 
     train_data = dataset.map(
         preprocess,
@@ -193,10 +177,10 @@ def train(
     train_data = train_data.filter(lambda example: len(example['input_ids']) <= tokenizer.model_max_length)
     logger.info(f"Dataset size after filtering out too long examples: {len(train_data)}")
 
-    trainer = transformers.Trainer(
+    trainer = PeftTrainer(
         model=model,
         train_dataset=train_data,
-        args=transformers.TrainingArguments(
+        args=TrainingArguments(
             per_device_train_batch_size=micro_batch_size,
             gradient_accumulation_steps=gradient_accumulation_steps,
             warmup_steps=100,
@@ -213,20 +197,14 @@ def train(
             ddp_find_unused_parameters=False if ddp else None,
             group_by_length=group_by_length,
         ),
-        data_collator=transformers.DataCollatorForSeq2Seq(
+        data_collator=DataCollatorForSeq2Seq(
             tokenizer, pad_to_multiple_of=8, return_tensors="pt", padding=True
         ),
     )
+
     model.config.use_cache = False
-
-    old_state_dict = model.state_dict
-    model.state_dict = (
-        lambda self, *_, **__: get_peft_model_state_dict(
-            self, old_state_dict()
-        )
-    ).__get__(model, type(model))
-
     model = torch.compile(model)
+
     trainer.train(resume_from_checkpoint=last_checkpoint)
 
     # undo float casting to be able to maintain correct name of lm_head weights

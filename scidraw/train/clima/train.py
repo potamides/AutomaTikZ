@@ -1,25 +1,19 @@
 import os
 from types import SimpleNamespace
+from types import MethodType
 from typing import Dict, List
 
 from datasets import DownloadManager
-from peft import (
-    LoraConfig,
-    get_peft_model,
-    get_peft_model_state_dict,
-    set_peft_model_state_dict,
-)
+from peft import LoraConfig, get_peft_model
 import torch
 from torch.utils.data import Dataset
-import transformers
-from transformers import AddedToken
+from transformers import AddedToken, TrainingArguments
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import logging
 from transformers.utils.hub import is_remote_url
-from types import MethodType
 
 from ...model.clima import ClimaConfig, ClimaForCausalLM
-from ...util import prepare_model_for_training
+from ...util import PeftTrainer, prepare_model_for_training
 from ..llama import load as llama_load, preprocess
 from .pretrain import DataCollatorForSupervisedDataset
 
@@ -36,8 +30,8 @@ def load(vision_tower="laion/CLIP-ViT-H-14-laion2B-s32B-b79K", pretrain_mm_mlp_a
     if pretrain_mm_mlp_adapter and is_remote_url(pretrain_mm_mlp_adapter):
         pretrain_mm_mlp_adapter = DownloadManager().download(pretrain_mm_mlp_adapter)
 
-    model.config.model_type = ClimaConfig.model_type
-    processor, _ = model.get_model().initialize_vision_modules(
+    model.config.model_type = ClimaConfig.model_type # type: ignore
+    processor, _ = model.get_model().initialize_vision_modules( # type: ignore
         vision_tower=vision_tower,
         mask_token_id=tokenizer.mask_token_id,
         pretrain_mm_mlp_adapter=pretrain_mm_mlp_adapter
@@ -124,7 +118,7 @@ def train(
             fn_kwargs=dict(  # pyright: ignore
                 tokenizer=tokenizer.text,
                 train_on_inputs=train_on_inputs,
-                num_patches=(num_patches:=model.get_model().vision_tower[0].config.num_patches),
+                num_patches=(num_patches:=model.get_model().vision_tower[0].config.num_patches), # type: ignore
                 clip_only=clip_only
             )
         )
@@ -163,30 +157,15 @@ def train(
                 "Use `overwrite` to overcome."
             )
         elif last_checkpoint is not None:
-            # Check the available weights and load them
-            checkpoint_name = os.path.join(
-                last_checkpoint, "pytorch_model.bin"
-            )  # Full checkpoint
-            if not os.path.exists(checkpoint_name):
-                checkpoint_name = os.path.join(
-                    last_checkpoint, "adapter_model.bin"
-                )  # only LoRA model - LoRA config above has to fit
-                last_checkpoint = (
-                    False  # So the trainer won't try loading its state
-                )
-            # The two files above have a different name depending on how they were saved, but are actually the same.
-            if os.path.exists(checkpoint_name):
-                logger.info(
-                    f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
-                    "the `output_dir` or add `overwrite` to train from scratch."
-                )
-                adapters_weights = torch.load(checkpoint_name)
-                model = set_peft_model_state_dict(model, adapters_weights)
+            logger.info(
+                f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
+                "the `output_dir` or add `overwrite` to train from scratch."
+            )
 
-    trainer = transformers.Trainer(
+    trainer = PeftTrainer(
         model=model,
         train_dataset=prepare_dataset(dataset),
-        args=transformers.TrainingArguments(
+        args=TrainingArguments(
             per_device_train_batch_size=micro_batch_size,
             gradient_accumulation_steps=gradient_accumulation_steps,
             warmup_steps=100,
@@ -208,16 +187,8 @@ def train(
     )
 
     model.config.use_cache = False
-
-    # Overwrite state dict so only trainable parameters get saved during checkpointing
-    old_state_dict = model.state_dict
-    model.state_dict = (
-        lambda self, *_, **__: get_peft_model_state_dict(
-            self, old_state_dict()
-        )
-    ).__get__(model, type(model))
-
     model = torch.compile(model)
+
     trainer.train(resume_from_checkpoint=last_checkpoint)
 
     # undo float casting to be able to maintain correct name of lm_head weights
