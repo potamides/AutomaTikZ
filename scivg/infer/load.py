@@ -12,9 +12,9 @@ from transformers import (
 )
 from transformers.utils.hub import get_file_from_repo, is_remote_url
 
-from scidraw import train
-from scidraw.model.clima import register
-from scidraw.util import merge_and_unload
+from .. import train
+from ..model.clima import register
+from ..util import merge_and_unload
 
 def load(path):
     register()

@@ -10,7 +10,7 @@ from transformers.utils.logging import (
     set_verbosity_info,
 )
 
-from scidraw.train.clima import pretrain, load
+from scivg.train.clima import pretrain, load
 
 DATASET_URL = "https://huggingface.co/datasets/liuhaotian/LLaVA-CC3M-Pretrain-595K/raw/main/chat.json"
 IMAGES_URL = "https://huggingface.co/datasets/liuhaotian/LLaVA-CC3M-Pretrain-595K/resolve/main/images.zip"

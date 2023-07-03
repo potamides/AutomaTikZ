@@ -3,7 +3,7 @@ requires = ["setuptools>=61", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "scidraw"
+name = "scivg"
 description = "Generating scientific vector graphics via TikZ"
 readme = "README.md"
 keywords = [
@@ -35,7 +35,7 @@ requires-python = "~=3.10"
 dynamic = ["version"]
 
 [project.urls]
-repository = "https://github.com/potamides/SciDraw"
+repository = "https://github.com/potamides/SciVG"
 
 [project.optional-dependencies]
 pdf = [
@@ -45,12 +45,12 @@ pdf = [
 examples = [
   "matplotlib",
   "tqdm",
-  "scidraw[pdf]"
+  "scivg[pdf]"
 ]
 
 [tool.setuptools_scm]
-write_to = "scidraw/_version.py"
-parentdir_prefix_version = "scidraw-"
+write_to = "scivg/_version.py"
+parentdir_prefix_version = "scivg-"
 
 [tool.setuptools.packages.find]
-include = ["scidraw*"]
+include = ["scivg*"]

@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from transformers import set_seed
 
-from scidraw.evaluate import load as load_metric
-from scidraw.infer import TikzGenerator, load as load_model
+from scivg.evaluate import load as load_metric
+from scivg.infer import TikzGenerator, load as load_model
 
 def parse_args():
     argument_parser = ArgumentParser(

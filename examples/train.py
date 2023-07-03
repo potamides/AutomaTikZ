@@ -10,7 +10,7 @@ from transformers.utils.logging import (
     set_verbosity_info,
 )
 
-from scidraw import train
+from scivg import train
 
 def parse_args():
     argument_parser = ArgumentParser(

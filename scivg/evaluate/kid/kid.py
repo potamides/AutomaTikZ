@@ -8,7 +8,7 @@ from torch.cuda import current_device, is_available as has_cuda
 from torchmetrics.image.kid import KernelInceptionDistance as KID
 from transformers import CLIPImageProcessor, CLIPVisionModel
 
-from scidraw.util import set_verbosity
+from ...util import set_verbosity
 
 class CLIPFeatureWrapper(nn.Module):
     def __init__(self, model: CLIPVisionModel):

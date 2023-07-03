@@ -4,7 +4,7 @@ from importlib.resources import files
 
 from .. import load_silent
 
-REPO = "potamides/SciDraw"
+REPO = "potamides/SciVG"
 TIKZ_DATA = str(files(import_module(__name__)) / "gpt4.json")
 
 def load():
