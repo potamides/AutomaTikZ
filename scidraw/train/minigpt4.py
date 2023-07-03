@@ -54,9 +54,9 @@ def load(base_model="decapoda-research/llama-{size}-hf", size="7b"):
             torch_dtype=torch.float16
         )
 
-    blip_model.language_model, llama_tokenizer = load_llama(base_model, size, add_bos_token=False)
-    linear = torch.load(DownloadManager().download(linear_name))['model']
-    blip_model.language_projection.load_state_dict(dict(
+    blip_model.language_model, llama_tokenizer = load_llama(base_model, size, add_bos_token=False) # type: ignore
+    linear = torch.load(DownloadManager().download(linear_name))['model'] # type: ignore
+    blip_model.language_projection.load_state_dict(dict( # type: ignore
         weight=linear['llama_proj.weight'],
         bias=linear['llama_proj.bias']
     ))
@@ -67,3 +67,6 @@ def load(base_model="decapoda-research/llama-{size}-hf", size="7b"):
     )
 
     return blip_model, blip_processor
+
+def train(*args, **kwargs):
+    raise NotImplementedError
