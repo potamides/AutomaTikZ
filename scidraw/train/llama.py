@@ -40,7 +40,7 @@ def load(base_model="decapoda-research/llama-{size}-hf", size="7b", base_class=L
         torch_dtype=torch.float16
     )
     tokenizer = LlamaTokenizer.from_pretrained(base_model,
-        model_max_length=1024, # 1536
+        model_max_length=1200,
         unk_token=token("<unk>"),
         bos_token=token("<s>"),
         eos_token=token("</s>"),

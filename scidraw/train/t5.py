@@ -14,7 +14,7 @@ logger = logging.get_logger("transformers")
 def load(base_model="Salesforce/codet5-{size}", size="large"):
     base_model = base_model.format(size=size)
     model = T5ForConditionalGeneration.from_pretrained(base_model)
-    tokenizer = RobertaTokenizer.from_pretrained(base_model, model_max_length=1024) #VERY_LARGE_INTEGER)
+    tokenizer = RobertaTokenizer.from_pretrained(base_model, model_max_length=1200) #VERY_LARGE_INTEGER)
     # https://stackoverflow.com/a/72305836
     #tokenizer.add_tokens([AddedToken("\n", normalized=False), "{", "}", "\\", "^", "`", "~"])
     #model.resize_token_embeddings(len(tokenizer))
