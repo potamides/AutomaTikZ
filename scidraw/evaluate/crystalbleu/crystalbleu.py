@@ -67,7 +67,7 @@ class CrystalBLEU(evaluate.Metric):
 
     def _compute(self, references, predictions):
         return {
-            "CrystalBLEU": corpus_bleu(
+            "CrystalBLEU": 100 * corpus_bleu(
                 list_of_references=[[self._tokenize(ref) for ref in refs] for refs in references],
                 hypotheses=[self._tokenize(c) for c in predictions],
                 ignoring=self.trivially_shared_ngrams
