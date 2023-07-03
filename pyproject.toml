@@ -31,7 +31,7 @@ dependencies = [
   "requests~=2.30",
   "torchmetrics~=0.11",
 ]
-requires-python = ">=3.10"
+requires-python = "~=3.10"
 dynamic = ["version"]
 
 [project.urls]
@@ -39,8 +39,13 @@ repository = "https://github.com/potamides/SciDraw"
 
 [project.optional-dependencies]
 pdf = [
-  "pdfCropMargins~=1.1",
+  "pdfCropMargins~=2.0",
   "pdf2image~=1.16",
+]
+examples = [
+  "matplotlib",
+  "tqdm",
+  "scidraw[pdf]"
 ]
 
 [tool.setuptools_scm]
