@@ -948,11 +948,11 @@ class TexDemacro(Stream):
         out = self.subst_args(begin, args) + body + self.subst_args(end, args)
         return self.apply_all_recur(out)
 
-    def apply_all_recur(self, data, report=False):
+    def apply_all_recur(self, data, report=False, return_macros=False):
         ts = TexDemacro(data=data)
         ts.defs = self.defs
         command_defs, env_defs = self.defs
-        out = []
+        out, macros = [], []
         progress_step = 10000
         progress = progress_step
         if not ts.legal():
@@ -977,6 +977,7 @@ class TexDemacro(Stream):
                     env_instance = ts.scan_env_rest(env_def)
                     result = ts.apply_env_recur(env_instance)
                     out.extend(result)
+                    macros.append(env_def.show())
             elif ts.item.val not in command_defs:
                 out.append(ts.item)
                 ts.next()
@@ -986,8 +987,8 @@ class TexDemacro(Stream):
                 command_inst = ts.scan_command(command_def)
                 result = ts.apply_command_recur(command_inst)
                 out.extend(result)
-        return out
-
+                macros.append(command_def.show())
+        return (out, list(dict.fromkeys(macros))) if return_macros else out
 
     # Processing files
 
@@ -1009,8 +1010,6 @@ class TexDemacro(Stream):
         logging.info("] file %s" % (source_file))
 
     def process(self, text_str, handle_inputs=False):
-        """Returns the new defs.
-        """
         self.smart_tokenize(text_str, handle_inputs=handle_inputs)
         if not self.data:
             raise Error("Empty tokenization result.")
@@ -1018,6 +1017,14 @@ class TexDemacro(Stream):
 
         self.data = self.apply_all_recur(self.data, report=True)
         return self.smart_detokenize(handle_inputs=handle_inputs)
+
+    def find(self, text_str, handle_inputs=False):
+        self.smart_tokenize(text_str, handle_inputs=handle_inputs)
+        if not self.data:
+            raise Error("Empty tokenization result.")
+        self.reset()
+
+        return self.apply_all_recur(self.data, report=True, return_macros=True)[1]
 
     def process_if_newer(self, file):
         r"""

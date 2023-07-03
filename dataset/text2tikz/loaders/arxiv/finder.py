@@ -3,20 +3,18 @@
 from collections import namedtuple
 from functools import cached_property
 from re import DOTALL, findall, search
-from typing import Optional
 
 from TexSoup import TexSoup
-from TexSoup.data import TexNode
 from .demacro import TexDemacro, Error as DemacroError
 
 class TikzFinder():
     """
     Find tikzpictures and associated captions in a latex document and extract
-    them as minimal compilable documents. Uses either regex (fast) TexSoup
-    (potentially better results, but prohibitively slow) for searching.
+    them as minimal compileable documents. Uses a combination of regex (fast)
+    and TexSoup (slow) for searching.
     """
     Tikz = namedtuple("TikZ", ['code', 'caption'])
-    Preamble = namedtuple("Preamble", ['tikz', 'macros'])
+    Preamble = namedtuple("Preamble", ['imports', 'macros'])
 
     def __init__(self, tex):
         self.tex = self._check(tex.strip())
@@ -28,9 +26,14 @@ class TikzFinder():
         return tex
 
     @cached_property
-    def preamble(self) -> "Preamble":
-        # Patterns for the most common stuff in a tikz document. Other stuff (e.g. macros) will be attempted to be inlined.
-        patterns = ["documentclass", "tikz", "tkz", "pgf", "inputenc", "fontenc", "fontspec", "amsmath"]
+    def _preamble(self) -> "Preamble":
+        """
+        Extract relevant package imports and possible macros from the document preamble.
+        """
+        # Patterns for the most common stuff to retain in a (tikz) document (\usepackage, \usetikzlibrary, \tikzset, etc).
+        include = ["documentclass", "tikz", "tkz", "pgf", "inputenc", "fontenc", "fontspec", "amsmath", "amssymb"]
+        # hard exclude macros ([re]newcommand, [re]newenvironment), as they are handled by de-macro
+        exclude = [r"\new", r"\renew"]
         preamble, *_ = self.tex.partition(r"\begin{document}")
 
         try:
@@ -41,28 +44,43 @@ class TikzFinder():
             statements = preamble.split("\n")
 
         tikz_preamble, maybe_macros = list(), list()
-        for statement in statements:
-            if not statement.lstrip().startswith("%"): # filter line comments
-                if any(pattern in statement for pattern in patterns):
-                    tikz_preamble.append(statement)
+        for stmt in statements:
+            if not stmt.lstrip().startswith("%"): # filter line comments
+                if not any(stmt.lstrip().startswith(pat) for pat in exclude) and any(pat in stmt for pat in include):
+                    tikz_preamble.append(stmt)
                 else:
-                    maybe_macros.append(statement)
+                    maybe_macros.append(stmt)
 
-        return self.Preamble(tikz="\n".join(tikz_preamble).strip(), macros="\n".join(maybe_macros).strip())
+        return self.Preamble(imports="\n".join(tikz_preamble).strip(), macros="\n".join(maybe_macros).strip())
 
-    def _expand_macros(self, macros, tikz):
+    def _process_macros(self, macros, tikz, expand=True):
         try:
             ts = TexDemacro(macros=macros)
-            return ts.process(tikz)
+            return ts.process(tikz) if expand else "\n\n".join(ts.find(tikz)).strip()
         except (DemacroError, RecursionError, TypeError):
-            return tikz
+            return tikz if expand else ""
 
     def _make_document(self, tikz: str) -> str:
-        # if there are some macros, which didn't make it into the tikz preamble, try to expand them
-        macro_expanded = self._expand_macros(self.preamble.macros, tikz)
-        return "\n\n".join([self.preamble.tikz, r"\begin{document}", macro_expanded, r"\end{document}"])
+        # if the tikzpicture uses some macros, append them to the tikz preamble
+        macros = self._process_macros(self._preamble.macros, tikz, expand=False)
+        extended_preamble = self._preamble.imports + (f"\n\n{macros}" if macros else "")
 
-    def _normalize_caption(self, caption: str) -> str:
+        return "\n\n".join([extended_preamble, r"\begin{document}", tikz, r"\end{document}"])
+
+    def _clean_caption(self, caption: str) -> str:
+        # expand any macros
+        caption = self._process_macros(self._preamble.macros, caption)
+
+        try:
+            cap_soup = TexSoup(caption, tolerance=1)
+            # remove any labels
+            for label in cap_soup.find_all("label"):
+                label.delete() # type: ignore
+            # convert the caption to plaintext (e.g. \textbf{bla} -> bla)
+            caption = "".join(item for item in cap_soup.text)
+        except:
+            pass
+
         return " ".join(caption.split())
 
     def _find_caption(self, figure: str) -> str:
@@ -83,54 +101,12 @@ class TikzFinder():
 
         return caption
 
-    def _regex_find(self):
+    def find(self):
         for figure in findall(r"\\begin{figure}(.*?)\\end{figure}", self.tex, DOTALL):
             if figure.count(r"\begin{tikzpicture}") == 1: # multiple tikzpictures (e.g. subfig) are above my paygrade
                 if tikz := search(r"(\\begin{tikzpicture}.*\\end{tikzpicture})", figure, DOTALL):
                     if caption := self._find_caption(figure):
-                        try:
-                            cap_soup = TexSoup(caption, tolerance=1)
-                            # remove any labels
-                            for label in cap_soup.find_all("label"):
-                                label.delete()
-                            # convert the caption to plaintext (e.g. \textbf{bla} -> bla)
-                            caption = "".join(item for item in cap_soup.text)
-                        except:
-                            pass
-                        yield self.Tikz(self._make_document(tikz.group(1)), self._normalize_caption(caption))
-
-    def _texsoup_find(self):
-        soup = TexSoup(self.tex, tolerance=1)
-
-        def find_figure(thing: TexNode) -> Optional[TexNode]:
-            while thing:
-                if thing.name == "figure":
-                    return thing
-                else:
-                    thing = thing.parent
-                    if thing and thing.name == "tikzpicture":
-                        break
-
-        for tikz in soup.find_all("tikzpicture"):
-            caption, parent = None, tikz.parent
-
-            if parent.name == "savebox":
-                boxname = parent.args[0].contents[0].name
-                for usebox in soup.find_all(boxname):
-                    if "savebox" not in usebox.parent.name:
-                        if figure := find_figure(usebox.parent):
-                            caption = figure.caption
-                            break
-            elif figure := find_figure(parent):
-                    caption = figure.caption
-
-            if caption:
-                caption_str = "".join(item for item in caption.text)
-                if caption_str:
-                    yield self.Tikz(self._make_document(str(tikz)), self._normalize_caption(caption))
-
-    def find(self, texsoup=False):
-        yield from self._texsoup_find() if texsoup else self._regex_find()
+                        yield self.Tikz(self._make_document(tikz.group(1)), self._clean_caption(caption))
 
     def __call__(self, *args, **kwargs):
         yield from self.find(*args, **kwargs)

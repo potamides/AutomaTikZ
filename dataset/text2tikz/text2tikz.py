@@ -137,15 +137,15 @@ class TikZ(builder.GeneratorBasedBuilder):
             ),
         ]
 
-    def _filter_comments(self, text, patterns=r"\{}$&#&_" + "=[]"):
+    def _filter_comments(self, text, patterns=r"\{}$&#&_" + "[]"):
         """
         Removes all comments that match the patterns. By default patterns are
         characters with catcodes 1-8 and a few other symbols often used inside
         TikZ code.
 
-        This may be useful for TeX StackExchange, because answer code retrieved
-        from there sometimes retrains the faulty code from the question,
-        commented out. This is an attempt to remove such comments.
+        This may be useful for arXiv, because tikzpictures retrieved from there
+        sometimes contain old code, commented out. This is an attempt to remove
+        such comments.
         """
         if text.lstrip().startswith("%") and any(pattern in text for pattern in patterns):
             return ""
@@ -231,9 +231,9 @@ class TikZ(builder.GeneratorBasedBuilder):
             logger.debug("Processing examples from '%s'.", name)
             match name:
                 case "PetarV-/TikZ" | "janosh/tikz": loader = load(directory=datasets[name])
-                case "arxiv": loader = load(directories=datasets[name])
+                case "arxiv": loader = load(directories=datasets[name], full_clean=True)
                 case "chatgpt": loader = load(tsv=datasets[name])
-                case "tex.stackexchange.com": loader = captionize(load(xml_path=datasets[name], full_clean=False))
+                case "tex.stackexchange.com": loader = captionize(load(xml_path=datasets[name]))
                 case "texample.net" | "tikz.net" | "gpt4": loader = load()
                 case "pgfplots.net": loader = load(base_url=f"https://{name}")
                 case _: raise ValueError(f'Source "{name}" not known!')
