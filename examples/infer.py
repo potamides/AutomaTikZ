@@ -25,7 +25,7 @@ def parse_args():
 
 if __name__ == "__main__":
     set_seed(0)
-    generate = TikzGenerator(*load(parse_args().path))
+    generate = TikzGenerator(*load(parse_args().path), stream=True)
     desc = dict(
         caption="the caption",
         image="optional input fed into CLIP, defaults to the caption (can be a Pillow Image, a URI to an image, or a caption)"

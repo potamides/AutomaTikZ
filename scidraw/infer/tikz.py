@@ -112,9 +112,8 @@ class TikzGenerator:
         tokenizer,
         temperature=0.2, # generation parameters based on results from codeparrot
         top_p=0.95,
-        max_length=1024,
         num_beams=1,
-        stream=True,
+        stream=False,
         expand_to_square=False,
     ):
         self.enc_dec = model.config.is_encoder_decoder
@@ -131,9 +130,8 @@ class TikzGenerator:
             temperature=temperature,
             top_p=top_p,
             num_beams=num_beams,
-            #constraints=self._prepare_constraints(),
             num_return_sequences=1,
-            max_length=max_length,
+            max_length=self.pipeline.tokenizer.model_max_length, # type: ignore
             do_sample=True,
             clean_up_tokenization_spaces=True,
             #remove_invalid_values=True,
@@ -149,27 +147,6 @@ class TikzGenerator:
             self.default_kwargs.pop("return_full_text")
         if not stream:
             self.default_kwargs.pop("streamer")
-
-    def _prepare_constraints(self):
-        with_prefix_space = [
-            r"\documentclass"
-        ]
-
-        with_and_without_prefix_space = [
-            r"\begin{document}",
-            r"\begin{tikzpicture}",
-            r"\end{tikzpicture}",
-            r"\end{document}"
-        ]
-
-        tk = lambda s: self.pipeline.tokenizer(s, add_special_tokens=False).input_ids # type: ignore
-        cv = lambda t: self.pipeline.tokenizer.convert_tokens_to_ids(t) # type: ignore
-
-        return (
-            [PhrasalConstraint(tk(term)) for term in with_prefix_space] +
-            [DisjunctiveConstraint([(tokens := tk(term)), [cv(term[0])] + tokens[1:]]) for term in with_and_without_prefix_space]
-        )
-
 
     def generate(self, caption: str, image: Optional[Union[Image.Image, str]]=None, **gen_kwargs):
         """
