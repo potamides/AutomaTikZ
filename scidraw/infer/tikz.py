@@ -1,8 +1,8 @@
 from collections import namedtuple
-from io import BytesIO
 from functools import cache
+from io import BytesIO
 from os.path import isfile
-from subprocess import DEVNULL, run
+from subprocess import DEVNULL, TimeoutExpired, run
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Optional, Union
 import warnings
@@ -12,8 +12,6 @@ import requests
 import torch
 from torch.cuda import current_device, is_available as has_cuda
 from transformers import (
-    DisjunctiveConstraint,
-    PhrasalConstraint,
     Text2TextGenerationPipeline as T2TGP,
     TextGenerationPipeline as TGP,
     TextStreamer,
@@ -56,7 +54,7 @@ class TikzDocument:
     def pdf(self) -> Optional[PdfDocument]:
         return self.compile().pdf
 
-    def compiled_with_error(self):
+    def compiled_with_errors(self):
         return self.status != 0
 
     @cache
@@ -68,19 +66,28 @@ class TikzDocument:
                 codelines.insert(1, r"\thispagestyle{empty}") # make sure we don't have page numbers in compiled pdf (for cropping)
                 tmpfile.write("\n".join(codelines).encode())
 
-                # compile
-                for engine in self.engines:
-                    kwargs = dict(stdout=DEVNULL, stderr=DEVNULL, timeout=self.timeout, cwd=tmpdirname)
-                    output['status'] = run([engine, "-interaction=nonstopmode", tmpfile.name], **kwargs).returncode
-                    if output['status'] == 0:
-                        break
+                try:
+                    # compile
+                    for engine in self.engines:
+                        kwargs = dict(stdout=DEVNULL, stderr=DEVNULL, timeout=self.timeout, cwd=tmpdirname)
+                        output['status'] = run([engine, "-interaction=nonstopmode", tmpfile.name], **kwargs).returncode
+                        if output['status'] == 0:
+                            break
 
-                # crop
-                if isfile(pdfname:=f"{tmpfile.name}.pdf"):
-                    croppedname = f"{tmpfile.name}.crop"
-                    crop(["-c", "gb", "-p", "0", "-g", "1", "-o", croppedname, pdfname], quiet=True)
-                    with open(croppedname, "rb") as pdf:
-                        output['pdf'] = PdfDocument(pdf.read())
+                    # crop
+                    pdfname, cropname = f"{tmpfile.name}.pdf", f"{tmpfile.name}.crop"
+                    crop(["-c", "gb", "-p", "0", "-g", "1", "-o", cropname, pdfname], quiet=True)
+                    if isfile(cropname):
+                        with open(cropname, "rb") as pdf:
+                            output['pdf'] = PdfDocument(pdf.read())
+
+                except (FileNotFoundError, NameError):
+                    logger.error("Missing dependencies: Consult the project page for help!")
+                except (TimeoutExpired, RuntimeError): #timeout error during compiling, pdf error during cropping
+                    pass
+
+        if output.get("status", -1) == 0 and not output.get("pdf", None):
+            logger.warning("Could compile document but something seems to have gone wrong during cropping!")
 
         return self.Output(**output)
 
