@@ -38,7 +38,7 @@ if __name__ == "__main__":
         while True:
             try:
                 caption = input("Caption: ")
-                image = input("Image (optional): ") if generate.processor else None
+                image = input("Image (optional): ") if generate.is_multimodal else None
             except (KeyboardInterrupt, EOFError):
                 break
             try:
