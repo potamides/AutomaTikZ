@@ -7,7 +7,7 @@ from torch import clamp, float16, split
 from torch.cuda import current_device, is_available as has_cuda
 from transformers import BatchEncoding, CLIPModel, CLIPProcessor
 
-from ...util import set_verbosity
+from scivg.util import set_verbosity
 
 class CLIPScore(evaluate.Metric):
     """CLIPScore for text-image or image-image evaluation."""
