@@ -23,13 +23,8 @@ dependencies = [
   "torch~=2.0",
   "transformers~=4.28",
   "peft~=0.2.0",
-  "Pygments~=2.15",
-  "crystalbleu~=0.1",
-  "evaluate~=0.4",
-  "sacremoses~=0.0",
   "Pillow~=9.5",
   "requests~=2.30",
-  "torchmetrics~=0.11",
 ]
 requires-python = "~=3.10"
 dynamic = ["version"]
@@ -38,6 +33,13 @@ dynamic = ["version"]
 repository = "https://github.com/potamides/SciVG"
 
 [project.optional-dependencies]
+evaluate= [
+  "evaluate>=0.4.0",
+  "Pygments>=2.15.1",
+  "crystalbleu>=0.1",
+  "torchmetrics>=0.11.4",
+  "sacremoses>=0.0.53",
+]
 pdf = [
   "pdfCropMargins~=2.0",
   "pdf2image~=1.16",
@@ -45,7 +47,7 @@ pdf = [
 examples = [
   "matplotlib",
   "tqdm",
-  "scivg[pdf]"
+  "scivg[evaluate,pdf]"
 ]
 
 [tool.setuptools_scm]
