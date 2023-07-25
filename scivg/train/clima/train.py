@@ -1,10 +1,12 @@
 import os
+from random import Random
 from types import SimpleNamespace
 from typing import Dict, List
 
 from datasets import DownloadManager
 from peft import LoraConfig, get_peft_model
 import torch
+from torch.random import initial_seed
 from torch.utils.data import Dataset
 from transformers import AddedToken, TrainingArguments
 from transformers.trainer_utils import get_last_checkpoint
@@ -48,16 +50,19 @@ class LazySupervisedMultiModalDataset(Dataset):
         self.dataset = dataset
         self.image_patches = image_patches
         self.train_on_inputs = train_on_inputs
+        # do not generate the same sequence of random numbers on each worker
+        self.random = Random(initial_seed() + int(os.getenv("RANK", 0)))
 
     def __len__(self):
-        return len(self.dataset) * 2 # data augmentation with both text and images
+        return len(self.dataset)
 
     def __getitem__(self, i) -> Dict[str, torch.Tensor | Dict[str, torch.Tensor]]:
         assert isinstance(i, int)
-        idx, use_text = divmod(i, 2)
-        item = self.dataset[idx]
+        item = self.dataset[i]
 
-        if use_text:
+        # FIXME: __getitem__ should be pure, so randomly selecting the modality
+        # is kind of bad
+        if self.random.randint(0, 1):
             image = self.tokenizer.image(text=item['caption'], return_tensors="pt", truncation=True)
         else:
             #image = Image.open(BytesIO(item['image']['bytes']))
@@ -78,7 +83,7 @@ def train(
     # training hyperparams
     batch_size: int = 128,
     micro_batch_size: int = 1,
-    num_epochs: int = 5, # not 10, because we use multimodal data augmentation (doubles data)
+    num_epochs: int = 10,
     learning_rate: float = 3e-4,
     gradient_checkpointing = False,
     # lora hyperparams
