@@ -43,6 +43,7 @@ evaluate= [
 pdf = [
   "pdfCropMargins~=2.0",
   "pdf2image~=1.16",
+  "PyMuPDF~=1.22",
 ]
 examples = [
   "matplotlib",
