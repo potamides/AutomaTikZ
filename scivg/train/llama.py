@@ -15,7 +15,7 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import logging
 
-from ..util import PeftTrainer, prepare_model_for_training
+from ..util import PeftTrainer, prepare_model_for_training, save_peft_model
 
 logger = logging.get_logger("transformers")
 
@@ -206,12 +206,7 @@ def train(
     model = torch.compile(model)
 
     trainer.train(resume_from_checkpoint=last_checkpoint)
-
-    # undo float casting to be able to maintain correct name of lm_head weights
-    if type(model.lm_head).__name__ == "CastOutputToFloat":
-        model.base_model.model.lm_head = model.lm_head[0]
-
-    model.save_pretrained(output_dir)
+    save_peft_model(model, output_dir) # type: ignore
     trainer.save_state()
 
     return model, tokenizer

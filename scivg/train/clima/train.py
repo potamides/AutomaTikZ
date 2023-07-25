@@ -1,6 +1,5 @@
 import os
 from types import SimpleNamespace
-from types import MethodType
 from typing import Dict, List
 
 from datasets import DownloadManager
@@ -13,7 +12,7 @@ from transformers.utils import logging
 from transformers.utils.hub import is_remote_url
 
 from ...model.clima import ClimaConfig, ClimaForCausalLM
-from ...util import PeftTrainer, prepare_model_for_training
+from ...util import PeftTrainer, prepare_model_for_training, save_peft_model
 from ..llama import load as llama_load, preprocess
 from .pretrain import DataCollatorForSupervisedDataset
 
@@ -190,22 +189,7 @@ def train(
     model = torch.compile(model)
 
     trainer.train(resume_from_checkpoint=last_checkpoint)
-
-    # undo float casting to be able to maintain correct name of lm_head weights
-    if type(model.lm_head).__name__ == "CastOutputToFloat":
-        model.base_model.model.lm_head = model.lm_head[0]
-
-    # UGLY HACK: Add model type to PEFT config, so that we later know exactly which model to load (needed for clima)
-    config.save_pretrained = MethodType(
-        lambda self, *args, **kwargs: type(self).save_pretrained(
-            SimpleNamespace(**self.to_dict(), model_type=model.config.model_type),
-            *args,
-            **kwargs,
-        ),
-        config,
-    )
-
-    model.save_pretrained(output_dir)
+    save_peft_model(model, output_dir) # type: ignore
     trainer.save_state()
 
     return model, tokenizer

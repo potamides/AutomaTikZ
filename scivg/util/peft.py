@@ -1,4 +1,6 @@
 from os.path import isfile, join
+from types import SimpleNamespace
+from types import MethodType
 
 from peft import PeftModel, get_peft_model_state_dict, set_peft_model_state_dict
 from peft.tuners.lora import LoraLayer
@@ -6,13 +8,16 @@ from peft.utils import WEIGHTS_NAME as ADAPTER_WEIGHTS_NAME, transpose
 import torch
 from torch.nn import Linear
 from transformers import Trainer
-from transformers.utils import logging
+from transformers.utils import WEIGHTS_NAME, logging
 
 logger = logging.get_logger("transformers")
 
 
-# Backported to peft 0.2
 def merge_and_unload(lora_model):
+    if hasattr(lora_model, 'merge_and_unload'): # peft 0.3 and above
+        return lora_model.merge_and_unload()
+
+    # Backported to peft 0.2
     key_list = [key for key, _ in lora_model.model.named_modules() if "lora" not in key]
     for key in key_list:
         try:
@@ -88,6 +93,24 @@ def prepare_model_for_training(
     return model
 
 
+def save_peft_model(model: PeftModel, *args, **kwargs):
+    # undo float casting to be able to maintain correct name of lm_head weights
+    if type(model.lm_head).__name__ == "CastOutputToFloat":
+        model.base_model.model.lm_head = model.lm_head[0] # type: ignore
+
+    # UGLY HACK: Add model type to PEFT config, so that we later know exactly which model to load (needed for clima)
+    model.peft_config.save_pretrained = MethodType(
+        lambda self, *args, **kwargs: type(self).save_pretrained(
+            SimpleNamespace(**self.to_dict(), model_type=model.config.model_type),
+            *args,
+            **kwargs,
+        ),
+        model.peft_config,
+    )
+
+    model.save_pretrained(*args, **kwargs)
+
+
 # adopted from https://github.com/artidoro/qlora/blob/main/qlora.py
 def find_all_linear_names(model, exclude=["lm_head"]):
     lora_module_names = set()
@@ -113,19 +136,18 @@ class PeftTrainer(Trainer):
             ).__get__(self.model, type(self.model))
 
     def _load_from_peft_checkpoint(self, resume_from_checkpoint, model):
-        if not isfile(adapter_weights_file:=join(resume_from_checkpoint, ADAPTER_WEIGHTS_NAME)):
+        weights_file = join(resume_from_checkpoint, WEIGHTS_NAME)
+        adapter_weights_file =join(resume_from_checkpoint, ADAPTER_WEIGHTS_NAME)
+
+        for file in [weights_file, adapter_weights_file]:
+            if isfile(file):
+                adapters_weights = torch.load(file, map_location="cpu")
+                set_peft_model_state_dict(model or self.model, adapters_weights)
+                break
+        else:
             raise ValueError(f"Can't find a valid checkpoint at {resume_from_checkpoint}")
 
-        if model is None:
-            model = self.model
-        if isinstance(model, PeftModel):
-            adapters_weights = torch.load(adapter_weights_file)
-            model = set_peft_model_state_dict(model, adapters_weights)
-        else:
-            raise ValueError(f"Found peft checkpoint at {resume_from_checkpoint}, but model isn't a peft model")
-
     def _load_from_checkpoint(self, resume_from_checkpoint, model=None):
-        try:
+        if isinstance(model or self.model, PeftModel):
             return self._load_from_peft_checkpoint(resume_from_checkpoint, model=model)
-        except ValueError:
-            return super()._load_from_checkpoint(resume_from_checkpoint, model=model)
+        return super()._load_from_checkpoint(resume_from_checkpoint, model=model)
