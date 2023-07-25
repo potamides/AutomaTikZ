@@ -63,11 +63,13 @@ def preprocess(examples, tokenizer, train_on_inputs=False, clip_only=False, num_
     def tokenize(texts, add_bos_token=True, add_eos_token=False, add_sep_token=False):
         with temporary_change_attributes(tokenizer, add_bos_token=add_bos_token, add_eos_token=add_eos_token):
             result = tokenizer(texts)
+
             if add_sep_token:
-                for input_ids, attention_mask in zip(result["input_ids"], result["attention_mask"]):
+                for input_ids in result["input_ids"]:
                     input_ids.append(tokenizer.sep_token_id)
-                    attention_mask.append(1)
+
             result["labels"] = deepcopy(result["input_ids"])
+            result.pop("attention_mask") # won't work with below truncation code and data collator will take care of it anyway
 
         return result
 
