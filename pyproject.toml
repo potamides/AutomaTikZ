@@ -18,13 +18,13 @@ keywords = [
 ]
 license = {text = "Apache-2.0 License"}
 dependencies = [
-  "datasets~=2.11",
-  "sentencepiece~=0.1",
   "torch~=2.0",
   "transformers~=4.28",
-  "peft~=0.2.0",
-  "Pillow~=9.5",
-  "requests~=2.30",
+  "datasets~=2.11",
+  "requests>=2.30.0",
+  "Pillow>=9.5.0",
+  "sentencepiece>=0.1.99",
+  "peft>=0.2.0",
 ]
 requires-python = "~=3.10"
 dynamic = ["version"]
