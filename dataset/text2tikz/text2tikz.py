@@ -5,11 +5,11 @@ Combination of various sources of tikz descriptions with aligned code.
 from functools import partial
 from io import BytesIO
 from itertools import islice
-from multiprocessing.pool import ThreadPool
+from multiprocessing.pool import Pool
 from re import sub
 from subprocess import CalledProcessError, DEVNULL, TimeoutExpired, run
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-from threading import Lock
+import fitz
 
 from PIL import ImageOps
 from datasets import Features, Image, Value, builder
@@ -21,7 +21,7 @@ from pdf2image.pdf2image import convert_from_path
 from pdfCropMargins import crop
 from regex import search
 
-from chatbot import WizardLM
+from llm.chat import WizardLM
 from text2tikz.loaders import (
     arxiv,
     gpt4,
@@ -43,38 +43,54 @@ def batched(iterable, n):
     while (batch := tuple(islice(it, n))):
         yield batch
 
-lock = Lock()
-def tex2img(code, size=224, timeout=120, expand_to_square=True):
+def tex2img(code, size=336, timeout=120, expand_to_square=True):
     codelines = code.split("\n")
-    codelines.insert(1, r"\thispagestyle{empty}") # make sure we don't have page numbers in compiled pdf (for cropping)
+    # make sure we don't have page numbers in compiled pdf (for cropping)
+    codelines.insert(1, r"{cmd}\AtBeginDocument{{{cmd}}}".format(cmd=r"\thispagestyle{empty}\pagestyle{empty}"))
 
     def try_compile(file):
-        for engine in ["lualatex", "pdflatex", "xelatex", "latex"]: # could also try: https://tex.stackexchange.com/a/495999
+        open(f"{file}.bbl", 'a').close() # some classes expect a bibfile
+        for engine in ["pdflatex", "lualatex", "xelatex"]: # could also try: https://tex.stackexchange.com/a/495999
             try:
-                return run([engine, "-interaction=nonstopmode", file], check=True, cwd=tmpdirname, stdout=DEVNULL, stderr=DEVNULL, timeout=timeout)
+                run(
+                    args=["latexmk", "-nobibtex", "-norc", "-interaction=nonstopmode", f"-{engine}", file],
+                    check=True,
+                    cwd=tmpdirname,
+                    stdout=DEVNULL,
+                    stderr=DEVNULL,
+                    timeout=timeout
+                )
+                return f"{file}.pdf"
             except CalledProcessError:
                 continue
         raise ValueError("Couldn't compile latex source.")
 
-    with TemporaryDirectory() as tmpdirname:
+    with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
         with NamedTemporaryFile(dir=tmpdirname, buffering=0) as tmpfile:
             # compile
             tmpfile.write("\n".join(codelines).encode())
-            try_compile(tmpfile.name)
+            pdfname = try_compile(tmpfile.name)
+
+            # extract last page
+            doc = fitz.open(pdfname) # type: ignore
+            doc.select([len(doc)-1])
+            doc.saveIncr()
 
             # crop
-            with lock: # pdfCropMargins is not threadsafe
-                crop(["-c", "gb", "-p", "0", "-g", "1", "-o", pdfname := f"{tmpfile.name}-cropped.pdf", f"{tmpfile.name}.pdf"], quiet=True)
-            #run(["pdfcrop", pdfname := f"{tmpfile.name}.pdf", pdfname], check=True, cwd=tmpdirname)
+            crop(["-c", "gb", "-p", "0", "-g", "1", "-o", cropname := f"{tmpfile.name}-cropped.pdf", pdfname], quiet=True)
+            #run(["pdfcrop", cropname := f"{tmpfile.name}.pdf", cropname], check=True, cwd=tmpdirname)
 
             # rasterize
-            image = convert_from_path(pdfname, size=size, single_file=True)[0]
-            img_format = image.format
+            image = convert_from_path(cropname, size=size, single_file=True)[0]
             if expand_to_square:
                 image = ImageOps.pad(image, (size, size), color='white')
 
+            # test if we have content
+            if image.getcolors(1) is not None:
+                raise ValueError("Provided code compiled to an empty image.")
+
             # save
-            image.save(imgByteArr:=BytesIO(), format=img_format)
+            image.save(imgByteArr:=BytesIO(), format="PNG")
 
             return imgByteArr.getvalue()
 
@@ -179,7 +195,7 @@ class TikZ(builder.GeneratorBasedBuilder):
         truncate them to the half of the model maximum length to leave enough
         space for generating text.
         """
-        tokenizer = self.config.chatbot.pipeline.tokenizer # type: ignore
+        tokenizer = self.config.chatbot.tokenizer # type: ignore
         return tokenizer.decode(
             tokenizer(description.strip(),
             truncation=True,
@@ -231,14 +247,14 @@ class TikZ(builder.GeneratorBasedBuilder):
             logger.debug("Processing examples from '%s'.", name)
             match name:
                 case "PetarV-/TikZ" | "janosh/tikz": loader = load(directory=datasets[name])
-                case "arxiv": loader = load(directories=datasets[name], full_clean=True)
+                case "arxiv": loader = load(directories=datasets[name], full_clean=True, bs=self.config.bs) # type: ignore
                 case "chatgpt": loader = load(tsv=datasets[name])
                 case "tex.stackexchange.com": loader = captionize(load(xml_path=datasets[name]))
                 case "texample.net" | "tikz.net" | "gpt4": loader = load()
                 case "pgfplots.net": loader = load(base_url=f"https://{name}")
                 case _: raise ValueError(f'Source "{name}" not known!')
 
-            with ThreadPool(self.config.bs) as p: # type: ignore
+            with Pool(self.config.bs) as p: # type: ignore
                 for example in skip_on_error(p.imap_unordered(self._compile, loader)):
                     example["origin"] = name
                     yield idx, example
