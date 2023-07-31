@@ -2,7 +2,7 @@
 
 from collections import namedtuple
 from functools import cached_property
-from re import DOTALL, findall, search
+from re import DOTALL, findall, finditer, search
 
 from TexSoup import TexSoup
 from .demacro import TexDemacro, Error as DemacroError
@@ -31,7 +31,9 @@ class TikzFinder():
         Extract relevant package imports and possible macros from the document preamble.
         """
         # Patterns for the most common stuff to retain in a (tikz) document (\usepackage, \usetikzlibrary, \tikzset, etc).
-        include = ["documentclass", "tikz", "tkz", "pgf", "inputenc", "fontenc", "fontspec", "amsmath", "amssymb"]
+        include = ["documentclass", "tikz", "tkz", "pgf"]
+        # Patterns for other commonly used packages
+        packages = ["inputenc", "fontenc", "fontspec", "amsmath", "amssymb", "color"]
         # hard exclude macros ([re]newcommand, [re]newenvironment), as they are handled by de-macro
         exclude = [r"\new", r"\renew"]
         preamble, *_ = self.tex.partition(r"\begin{document}")
@@ -46,7 +48,10 @@ class TikzFinder():
         tikz_preamble, maybe_macros = list(), list()
         for stmt in statements:
             if not stmt.lstrip().startswith("%"): # filter line comments
-                if not any(stmt.lstrip().startswith(pat) for pat in exclude) and any(pat in stmt for pat in include):
+                if not any(stmt.lstrip().startswith(pat) for pat in exclude) and (
+                    any(pat in stmt for pat in include) or (
+                    stmt.lstrip().startswith(r"\usepackage") and any(pat in stmt for pat in packages)
+                )):
                     tikz_preamble.append(stmt)
                 else:
                     maybe_macros.append(stmt)
@@ -60,10 +65,23 @@ class TikzFinder():
         except (DemacroError, RecursionError, TypeError):
             return tikz if expand else ""
 
+    def _find_colordefs(self, macros, tikz):
+        definecolor_regex = r'^\s*\\definecolor(?:\[\w+?\])?\{(\w+?)\}\{\w+?\}\{.+?\}'
+
+        matches = list()
+        for color in finditer(definecolor_regex, macros):
+            name, definition = color.group(1), color.group().lstrip()
+            if search(rf"\b{name}\b", tikz):
+                matches.append(definition)
+
+        return "\n".join(matches).strip()
+
     def _make_document(self, tikz: str) -> str:
         # if the tikzpicture uses some macros, append them to the tikz preamble
         macros = self._process_macros(self._preamble.macros, tikz, expand=False)
-        extended_preamble = self._preamble.imports + (f"\n\n{macros}" if macros else "")
+        # also search for utilized color definitions
+        colors = self._find_colordefs(self._preamble.macros, tikz)
+        extended_preamble = self._preamble.imports + (f"\n\n{colors}" if colors else "") + (f"\n\n{macros}" if macros else "")
 
         return "\n\n".join([extended_preamble, r"\begin{document}", tikz, r"\end{document}"])
 
