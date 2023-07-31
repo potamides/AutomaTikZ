@@ -11,6 +11,7 @@ pdfCropMargins~=2.0.3
 PyMuPDF~=1.22.2
 Pillow~=9.5.0
 svg2tikz~=2.0.0
+sacremoses~=0.0.53
 #TexSoup~=0.3.1
 https://github.com/alvinwan/TexSoup/archive/c91a14a0019ff7df197e71c906bc0403eddf80dc.zip
 https://github.com/haotian-liu/LLaVA/archive/f001a8a55ee52023faa96d7871bd5b996b275013.zip
