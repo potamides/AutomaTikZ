@@ -1,5 +1,6 @@
-from typing import List
 from abc import ABC, abstractmethod
+from functools import cached_property
+from typing import List
 import warnings
 
 import torch
@@ -29,14 +30,22 @@ WIZARD_PROMPT = (
 
 class ChatBot(ABC):
     def __init__(self, model, bs=1, prefix=None, **tokenizer_kwargs):
-        self.pipeline = TextGenerationPipeline(
-            batch_size=bs,
-            model=LlamaForCausalLM.from_pretrained(model, torch_dtype=torch.float16),
-            tokenizer=LlamaTokenizer.from_pretrained(model, padding_side="left", **tokenizer_kwargs),
+        self.tokenizer = LlamaTokenizer.from_pretrained(model, padding_side="left", **tokenizer_kwargs),
+        self.prefix = prefix if prefix else ""
+        self.model_name = model
+        self.bs = bs
+
+    @cached_property
+    def pipeline(self):
+        pipeline = TextGenerationPipeline(
+            batch_size=self.bs,
+            model=LlamaForCausalLM.from_pretrained(self.model_name, torch_dtype=torch.float16),
+            tokenizer=self.tokenizer,
             device=current_device() if has_cuda() else -1
         )
-        self.pipeline.model = torch.compile(self.pipeline.model)
-        self.prefix = prefix if prefix else ""
+        pipeline.model = torch.compile(self.pipeline.model)
+
+        return pipeline
 
     def __call__(self, *args, **kwargs):
         return self.generate(*args, **kwargs)
@@ -58,18 +67,18 @@ class ChatBot(ABC):
             # hyperparameters from https://github.com/tatsu-lab/stanford_alpaca/issues/35
             completions = [cmp[0]["generated_text"] for cmp in self.pipeline(
                 prompts,
-                prefix=self.pipeline.tokenizer.bos_token,
+                prefix=self.tokenizer.bos_token,
                 temperature=1,
                 top_p=0.95,
                 top_k=40,
                 num_beams=1,
-                max_length=self.pipeline.tokenizer.model_max_length,
+                max_length=self.tokenizer.model_max_length,
                 do_sample=True,
                 return_full_text=False,
-                eos_token_id=self.pipeline.tokenizer.eos_token_id,
-                pad_token_id=self.pipeline.tokenizer.pad_token_id,
+                eos_token_id=self.tokenizer.eos_token_id,
+                pad_token_id=self.tokenizer.pad_token_id,
                 # hack to suppress XML output
-                begin_suppress_tokens=[self.pipeline.tokenizer.convert_tokens_to_ids("<")]
+                begin_suppress_tokens=[self.tokenizer.convert_tokens_to_ids("<")]
             )]
 
         completions = [self.prefix + completion for completion in completions]

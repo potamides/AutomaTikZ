@@ -2,9 +2,9 @@ beautifulsoup4~=4.11.2
 Markdown~=3.4.1
 datasets~=2.11.0
 PyYAML~=6.0
-transformers~=4.28.1
-torch~=2.0.0
-sentencepiece~=0.1.97
+transformers~=4.31.0
+torch~=2.0.1
+sentencepiece~=0.1.99
 openpyxl~=3.1.2
 pdf2image~=1.16.3
 pdfCropMargins~=1.1.18
@@ -12,4 +12,5 @@ Pillow~=9.5.0
 svg2tikz~=2.0.0
 #TexSoup~=0.3.1
 https://github.com/alvinwan/TexSoup/archive/c91a14a0019ff7df197e71c906bc0403eddf80dc.zip
+https://github.com/haotian-liu/LLaVA/archive/f001a8a55ee52023faa96d7871bd5b996b275013.zip
 regex
