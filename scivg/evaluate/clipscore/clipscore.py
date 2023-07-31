@@ -3,7 +3,7 @@ from typing import Optional
 
 from datasets import Features, Image, Value
 import evaluate
-from torch import clamp, float16, split
+from torch import float16, split
 from torch.cuda import current_device, is_available as has_cuda
 from transformers import BatchEncoding, CLIPModel, CLIPProcessor
 
@@ -61,7 +61,7 @@ class CLIPScore(evaluate.Metric):
 
 
         pred_filter, ref_filter, num_filtered = self._filter(references, predictions)
-        scores = num_filtered * [0] # rate filtered images as lowest score zero
+        scores = num_filtered * [-1] # rate filtered images as lowest score
 
         if pred_filter:
             pred_proc = img_process(pred_filter)
@@ -78,8 +78,8 @@ class CLIPScore(evaluate.Metric):
                 # cosine similarity between feature vectors
                 fake_features = fake_features / fake_features.norm(p=2, dim=-1, keepdim=True)
                 real_features = real_features / real_features.norm(p=2, dim=-1, keepdim=True)
-                scores.extend(clamp((real_features * fake_features).sum(axis=-1), 0).tolist())
+                scores.extend((real_features * fake_features).sum(axis=-1).tolist())
 
         return {
-            "CLIPScore" + (" (img2img)" if self.image_to_image else ""): 100 * mean(scores)
+            "CLIPScore" + (" (img2img)" if self.image_to_image else ""): 100 * max(mean(scores), 0)
         }
