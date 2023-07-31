@@ -81,18 +81,22 @@ class TikzDocument:
         with TemporaryDirectory() as tmpdirname:
             with NamedTemporaryFile(dir=tmpdirname, buffering=0) as tmpfile:
                 codelines = self.code.split("\n")
-                codelines.insert(1, r"\pagestyle{empty}") # make sure we don't have page numbers in compiled pdf (for cropping)
+                # make sure we don't have page numbers in compiled pdf (for cropping)
+                codelines.insert(1, r"{cmd}\AtBeginDocument{{{cmd}}}".format(cmd=r"\thispagestyle{empty}\pagestyle{empty}"))
                 tmpfile.write("\n".join(codelines).encode())
 
                 try:
                     # compile
                     errorln, tmppdf, outpdf = 0, f"{tmpfile.name}.pdf", join(tmpdirname, "tikz.pdf")
+                    open(f"{tmpfile.name}.bbl", 'a').close() # some classes expect a bibfile
 
                     def try_save_last_page():
-                        if isfile(tmppdf):
+                        try:
                             doc = fitz.open(tmppdf) # type: ignore
                             doc.select([len(doc)-1])
                             doc.save(outpdf)
+                        except:
+                            pass
 
                     for engine in self.engines:
                         try:
@@ -101,7 +105,7 @@ class TikzDocument:
                                 timeout=self.timeout,
                                 stderr=DEVNULL,
                                 env=environ | dict(max_print_line="1000"), # improve formatting of log
-                                args=["latexmk", "-f", "-norc", "-file-line-error", "-interaction=nonstopmode", f"-{engine}", tmpfile.name]
+                                args=["latexmk", "-f", "-nobibtex", "-norc", "-file-line-error", "-interaction=nonstopmode", f"-{engine}", tmpfile.name]
                             )
                         except (CalledProcessError, TimeoutExpired) as proc:
                             log = proc.output.decode(errors="ignore")
@@ -136,7 +140,7 @@ class TikzDocument:
 
         return self.Output(**output)
 
-    def rasterize(self, size=224, expand_to_square=True) -> Optional[Image.Image]:
+    def rasterize(self, size=336, expand_to_square=True) -> Optional[Image.Image]:
         if self.pdf:
             image = convert_from_bytes(self.pdf.raw, size=size, single_file=True)[0]
             if expand_to_square:
