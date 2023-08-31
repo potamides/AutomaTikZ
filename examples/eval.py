@@ -184,7 +184,7 @@ if __name__ == "__main__":
     args = parse_args()
 
     trainset = load_dataset("parquet", data_files=args.trainset, split="train")
-    testset = load_dataset("parquet", data_files={"test": args.testset}, split=f"test")
+    testset = load_dataset("parquet", data_files={"test": args.testset}, split="test").sort("caption")
 
     predictions = defaultdict(list)
     for model_name, path in map(lambda s: s.split('='), tqdm(args.path, desc="Predicting")):
