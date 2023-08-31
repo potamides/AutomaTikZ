@@ -1,13 +1,18 @@
 from collections import Counter
+from hashlib import md5
 from itertools import chain, tee
+from pickle import dump, load
 
 from crystalbleu import corpus_bleu
 from datasets import Features, Sequence, Value
 import evaluate
+from evaluate.config import HF_EVALUATE_CACHE
+from evaluate.utils.logging import get_logger
 from pygments.lexers.markup import TexLexer
 from pygments.token import Comment, Name, Text
 from sacremoses import MosesTokenizer
 
+logger = get_logger("evaluate")
 
 # adopted from nltk
 def pad_sequence(sequence, n, pad_left=False, pad_right=False, left_pad_symbol=None, right_pad_symbol=None):
@@ -31,18 +36,12 @@ def ngrams(sequence, n, **kwargs):
 class CrystalBLEU(evaluate.Metric):
     """Wrapper around https://github.com/sola-st/crystalbleu (adapted for LaTeX)"""
 
-    def __init__(self, corpus, k=500, n=4, **kwargs):
+    def __init__(self, corpus, k=500, n=4, use_cache=True, **kwargs):
         super().__init__(**kwargs)
         self.lexer = TexLexer()
         self.tokenizer = MosesTokenizer()
-        self.k = k
-
-        all_ngrams = list()
-        for o in range(1, n+1):
-            for tex in corpus:
-                all_ngrams.extend(ngrams(self._tokenize(tex), o))
-        frequencies = Counter(all_ngrams)
-        self.trivially_shared_ngrams = dict(frequencies.most_common(self.k))
+        self.use_cache = use_cache
+        self.trivially_shared_ngrams = self.get_trivially_shared_ngrams(corpus, k, n)
 
     def _info(self):
         return evaluate.MetricInfo(
@@ -53,6 +52,35 @@ class CrystalBLEU(evaluate.Metric):
                 predictions=Value("string"),
             )),
         )
+
+    def get_trivially_shared_ngrams(self, corpus, k, n):
+        """
+        Computes trivially shared ngrams and caches them.
+        """
+        cache_dir = HF_EVALUATE_CACHE / self.__class__.__name__.lower()
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+        dhash = md5()
+        dhash.update(str(sorted(corpus)).encode())
+        hashname = f"{dhash.hexdigest()}.pkl"
+
+        if (cache_file:=(cache_dir / hashname)).is_file() and self.use_cache:
+            logger.info(f"Found cached trivially shared ngrams ({cache_file})")
+            with open(cache_file, "rb") as f:
+                return load(f)
+        else:
+            all_ngrams = list()
+            for o in range(1, n+1):
+                for tex in corpus:
+                    all_ngrams.extend(ngrams(self._tokenize(tex), o))
+            frequencies = Counter(all_ngrams)
+
+            trivially_shared_ngrams = dict(frequencies.most_common(k))
+            if self.use_cache:
+                logger.info(f"Caching trivially shared ngrams ({cache_file})")
+                with open(cache_file, "wb") as f:
+                    dump(trivially_shared_ngrams, f)
+            return trivially_shared_ngrams
 
     def _tokenize(self, text):
         tokens = list()
