@@ -24,7 +24,7 @@ class KernelInceptionDistance(evaluate.Metric):
     def __init__(
         self,
         subset_size: int = 50,
-        clip_model: str | CLIPVisionModel = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
+        clip_model: str | CLIPVisionModel = "openai/clip-vit-large-patch14-336",
         device: int = current_device() if has_cuda() else -1,
         batch_size: Optional[int] = None,
         **kwargs,

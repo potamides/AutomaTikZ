@@ -14,7 +14,7 @@ class CLIPScore(evaluate.Metric):
 
     def __init__(
         self,
-        clip_model: str | CLIPModel = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
+        clip_model: str | CLIPModel = "openai/clip-vit-large-patch14-336",
         image_to_image: bool = False,
         device: int = current_device() if has_cuda() else -1,
         batch_size: Optional[int] = None,
