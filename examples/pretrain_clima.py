@@ -12,7 +12,7 @@ from transformers.utils.logging import (
 
 from scivg.train.clima import pretrain, load
 
-DATASET_URL = "https://huggingface.co/datasets/liuhaotian/LLaVA-CC3M-Pretrain-595K/raw/main/chat.json"
+DATASET_URL = "https://huggingface.co/datasets/liuhaotian/LLaVA-CC3M-Pretrain-595K/resolve/main/chat.json"
 IMAGES_URL = "https://huggingface.co/datasets/liuhaotian/LLaVA-CC3M-Pretrain-595K/resolve/main/images.zip"
 
 def parse_args():
