@@ -166,7 +166,7 @@ class TikzGenerator:
         self,
         model,
         tokenizer,
-        temperature: float = 0.2, # based on "a systematic evaluation of large language models of code"
+        temperature: float = 0.8, # based on "a systematic evaluation of large language models of code"
         top_p: float = 0.95,
         top_k: int = 0,
         stream: bool = False,

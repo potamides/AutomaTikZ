@@ -83,8 +83,8 @@ def train(
     # training hyperparams
     batch_size: int = 128,
     micro_batch_size: int = 1,
-    num_epochs: int = 10,
-    learning_rate: float = 3e-4,
+    num_epochs: int = 12,
+    learning_rate: float = 5e-4,
     gradient_checkpointing = False,
     # lora hyperparams
     lora_r: int = 64,
@@ -172,13 +172,14 @@ def train(
         args=TrainingArguments(
             per_device_train_batch_size=micro_batch_size,
             gradient_accumulation_steps=gradient_accumulation_steps,
-            warmup_steps=100,
+            warmup_ratio=0.03,
             num_train_epochs=num_epochs,
             learning_rate=learning_rate,
             fp16=True,
             #bf16=True,
             #tf32=True,
             logging_steps=10,
+            lr_scheduler_type="cosine",
             optim="adamw_torch",
             save_strategy="epoch",
             output_dir=output_dir,
