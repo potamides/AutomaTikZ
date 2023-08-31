@@ -3,9 +3,10 @@ from typing import Optional
 
 from datasets import Features, Image, Value
 import evaluate
-from torch import float16, split
+from torch import float16
+from itertools import islice
 from torch.cuda import current_device, is_available as has_cuda
-from transformers import BatchEncoding, CLIPModel, CLIPProcessor
+from transformers import CLIPModel, CLIPProcessor
 
 from scivg.util import set_verbosity
 
@@ -42,9 +43,10 @@ class CLIPScore(evaluate.Metric):
             )),
         )
 
-    def _batch(self, data: BatchEncoding, batch_size: int):
-        for batch in  zip(*[split(value, batch_size) for value in data.values()]):
-            yield BatchEncoding(dict(zip(data.keys(), batch)))
+    # https://stackoverflow.com/a/22045226
+    def _batch(self, it, size):
+       it = iter(it)
+       return iter(lambda: tuple(islice(it, size)), ())
 
     def _filter(self, references, predictions):
         pred_filter, ref_filter = list(), list()
@@ -64,16 +66,16 @@ class CLIPScore(evaluate.Metric):
         scores = num_filtered * [-1] # rate filtered images as lowest score
 
         if pred_filter:
-            pred_proc = img_process(pred_filter)
-            ref_proc = img_process(ref_filter) if self.image_to_image else txt_process(ref_filter)
+            bs = self.batch_size or len(ref_filter)
+            for real, fake in zip(self._batch(ref_filter, bs), self._batch(pred_filter, bs)): # type: ignore
+                fake_proc = img_process(fake)
+                real_proc = img_process(real) if self.image_to_image else txt_process(real)
 
-            bs = self.batch_size or len(ref_proc)
-            for real, fake in zip(self._batch(ref_proc, bs), self._batch(pred_proc, bs)): # type: ignore
-                fake_features = self.model.get_image_features(**fake) # type: ignore
+                fake_features = self.model.get_image_features(**fake_proc) # type: ignore
                 if self.image_to_image:
-                    real_features = self.model.get_image_features(**real) # type: ignore
+                    real_features = self.model.get_image_features(**real_proc) # type: ignore
                 else:
-                    real_features = self.model.get_text_features(**real) # type: ignore
+                    real_features = self.model.get_text_features(**real_proc) # type: ignore
 
                 # cosine similarity between feature vectors
                 fake_features = fake_features / fake_features.norm(p=2, dim=-1, keepdim=True)
