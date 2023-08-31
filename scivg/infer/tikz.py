@@ -122,7 +122,7 @@ class TikzDocument:
 
                     # crop
                     croppdf = f"{tmpfile.name}.crop"
-                    crop(["-gsf", "-c", "gb", "-p", "0", "-o", croppdf, outpdf], quiet=True)
+                    crop(["-gsf", "-c", "gb", "-p", "0", "-a", "-1", "-o", croppdf, outpdf], quiet=True)
                     if isfile(croppdf):
                         with open(croppdf, "rb") as pdf:
                             output['pdf'] = PdfDocument(pdf.read())

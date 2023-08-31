@@ -77,7 +77,7 @@ def tex2img(code, size=336, timeout=120, expand_to_square=True):
             doc.saveIncr()
 
             # crop
-            crop(["-c", "gb", "-p", "0", "-g", "1", "-o", cropname := f"{tmpfile.name}-cropped.pdf", pdfname], quiet=True)
+            crop(["-c", "gb", "-p", "0", "-a", "-1", "-o", cropname := f"{tmpfile.name}-cropped.pdf", pdfname], quiet=True)
             #run(["pdfcrop", cropname := f"{tmpfile.name}.pdf", cropname], check=True, cwd=tmpdirname)
 
             # rasterize
