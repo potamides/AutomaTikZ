@@ -212,8 +212,7 @@ class TikzGenerator:
             for token in reversed(tokenizer.tokenize(prompt)): # type: ignore
                 # remove leading characters because skip_special_tokens in pipeline
                 # adds unwanted prefix spaces if prompt ends with a special tokens
-                if text and token in tokenizer.all_special_tokens: # type: ignore
-                    assert text[0].isspace() # type: ignore
+                if text and text[0].isspace() and token in tokenizer.all_special_tokens: # type: ignore
                     text = text[1:]
                 else:
                     break
