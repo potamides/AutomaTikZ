@@ -5,7 +5,7 @@ from sys import flags
 from PIL import UnidentifiedImageError
 from transformers import set_seed
 
-from scivg.infer import TikzGenerator, load
+from automatikz.infer import TikzGenerator, load
 
 try:
     import readline # patches input()

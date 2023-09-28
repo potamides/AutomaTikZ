@@ -3,7 +3,7 @@ requires = ["setuptools>=61", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "scivg"
+name = "automatikz"
 description = "Generating scientific vector graphics via TikZ"
 readme = "README.md"
 keywords = [
@@ -30,7 +30,7 @@ requires-python = "~=3.10"
 dynamic = ["version"]
 
 [project.urls]
-repository = "https://github.com/potamides/SciVG"
+repository = "https://github.com/potamides/AutomaTikZ"
 
 [project.optional-dependencies]
 evaluate= [
@@ -48,12 +48,15 @@ pdf = [
 examples = [
   "matplotlib",
   "tqdm",
-  "scivg[evaluate,pdf]"
+  "automatikz[evaluate,pdf]"
+]
+all = [
+  "automatikz[evaluate,pdf,examples]"
 ]
 
 [tool.setuptools_scm]
-write_to = "scivg/_version.py"
-parentdir_prefix_version = "scivg-"
+write_to = "automatikz/_version.py"
+parentdir_prefix_version = "automatikz-"
 
 [tool.setuptools.packages.find]
-include = ["scivg*"]
+include = ["automatikz*"]

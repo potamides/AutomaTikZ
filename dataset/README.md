@@ -1,4 +1,4 @@
-# Text2TikZ Dataset
+# DaTi*k*Z Dataset
 
 Relies on a full [TeXLive](https://www.tug.org/texlive) installation, and
 requires [ghostscript](https://www.ghostscript.com) and

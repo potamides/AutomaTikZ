@@ -13,8 +13,8 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from transformers import set_seed
 
-from scivg.evaluate import load as load_metric
-from scivg.infer import TikzDocument, TikzGenerator, load as load_model
+from automatikz.evaluate import load as load_metric
+from automatikz.infer import TikzDocument, TikzGenerator, load as load_model
 
 def parse_args():
     argument_parser = ArgumentParser(
@@ -42,12 +42,12 @@ def parse_args():
     argument_parser.add_argument(
         "--trainset",
         required=True,
-        help="path to the text2tikz train set (in parquet format)",
+        help="path to the datikz train set (in parquet format)",
     )
     argument_parser.add_argument(
         "--testset",
         required=True,
-        help="path to the text2tikz test set (in parquet format)",
+        help="path to the datikz test set (in parquet format)",
     )
     argument_parser.add_argument(
         "--output",

@@ -8,6 +8,7 @@ from itertools import islice
 from multiprocessing.pool import Pool
 from re import sub
 from subprocess import CalledProcessError, DEVNULL, TimeoutExpired, run
+from os import getenv, pathsep
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 import fitz
 
@@ -105,10 +106,7 @@ class TikZConfig(builder.BuilderConfig):
             "PetarV-/TikZ": "https://github.com/PetarV-/TikZ/archive/refs/heads/master.zip",
             "janosh/tikz": "https://github.com/janosh/tikz/archive/refs/heads/main.zip",
             "chatgpt": "https://github.com/evanthebouncy/chatgpt-svg/raw/master/data.tsv",
-            "arxiv": [
-                f"https://github.com/potamides/arxiv-latex-extract/releases/latest/download/arxiv-part{i}.tar.gz"
-                for i in range(5)
-            ],
+            "arxiv": getenv("DATIKZ_ARXIV_FILES", "").split(pathsep),
             "tex.stackexchange.com": "https://archive.org/download/stackexchange/tex.stackexchange.com.7z/Posts.xml",
         }
         self.generators = {

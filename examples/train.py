@@ -10,11 +10,11 @@ from transformers.utils.logging import (
     set_verbosity_info,
 )
 
-from scivg import train
+from automatikz import train
 
 def parse_args():
     argument_parser = ArgumentParser(
-        description="Fine-tune language models for text2tikz"
+        description="Fine-tune language models on datikz"
     )
     argument_parser.add_argument(
         "--model",
@@ -42,7 +42,7 @@ def parse_args():
     argument_parser.add_argument(
         "--dataset",
         required=True,
-        help="path to the text2tikz dataset (in parquet format)",
+        help="path to the datikz dataset (in parquet format)",
     )
     argument_parser.add_argument(
         "--gradient_checkpointing",

@@ -8,7 +8,7 @@ from itertools import islice
 from torch.cuda import current_device, is_available as has_cuda
 from transformers import CLIPModel, CLIPProcessor
 
-from scivg.util import set_verbosity
+from automatikz.util import set_verbosity
 
 class CLIPScore(evaluate.Metric):
     """CLIPScore for text-image or image-image evaluation."""
