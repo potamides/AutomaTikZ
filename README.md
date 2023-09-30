@@ -1,13 +1,13 @@
 # AutomaTi*k*Z<br><sub><sup>Text-Guided Synthesis of Scientific Vector Graphics with Ti*k*Z</sup></sub>
 [AutomaTi*k*Z](https://github.com/potamides/AutomaTikZ) is a software library
 designed for the automatic creation of scientific vector graphics using natural
-language inputs. Generating vector graphics such as SVGs directly can be
+language descriptions. Generating vector graphics such as SVGs directly can be
 challenging, but AutomaTi*k*Z simplifies the process by using
 [Ti*k*Z](https://github.com/pgf-tikz/pgf), a well-known abstract graphics
-language that can be compiled into vector graphics, as an intermediary
-format. Ti*k*Z's user-friendly, high-level commands make it easier to perform
-conditional language modeling with any large language model. AutomaTi*k*Z
-comes with a variety of tools for working with such models.
+language that can be compiled into vector graphics, as an intermediary format.
+Ti*k*Z's human-oriented, high-level commands facilitate conditional language
+modeling with any large language model. AutomaTi*k*Z comes with a variety of
+tools for working with such models.
 
 ## Installation
 The base version of AutomaTi*k*Z, which already supports inference and
@@ -17,12 +17,13 @@ training, can be installed as regular Python package using
 pip install 'git+https://github.com/potamides/AutomaTikZ.git#egg=automatikz[pdf]'
 ```
 For compilation of generated code, AutomaTi*k*Z additionally requires a full
-[TeXLive](https://www.tug.org/texlive) installation,
+[TeX Live](https://www.tug.org/texlive) installation,
 [ghostscript](https://www.ghostscript.com), and, for rasterization of vector
 graphics, [poppler](https://poppler.freedesktop.org).
 
 If your goal is to run the included [examples](examples) (e.g., to reproduce
-results) clone the repository and install it in editable mode like this:
+results) clone the repository and install it in editable mode like this,
+instead:
  ```sh
 git clone https://github.com/potamides/AutomaTikZ
 pip install -e AutomaTikZ[examples]
@@ -44,7 +45,7 @@ caption = (
 tikzdoc = generate(caption) # streams generated tokens to stdout
 tikzdoc.save("mlp.tex") # save the generated code
 if tikzdoc.has_content: # true if generated tikzcode compiles to non-empty pdf
-    tikzdoc.rasterize().show() # raterize pdf to PIL.Image and show it
+    tikzdoc.rasterize().show() # raterize pdf to a PIL.Image and show it
     tikzdoc.save("mlp.pdf") # save the generated pdf
 ```
 More involved examples, both for inference and training, can be found in the
@@ -62,8 +63,9 @@ Hub](https://huggingface.co/nllg):
 
 ## Datasets
 While we provide official versions of our DaTi*k*Z dataset under
-[releases](https://github.com/potamides/AutomaTikZ/releases/latest), we have to
-remove a considerable portion of Ti*k*Z drawings originating from
+[releases](https://github.com/potamides/AutomaTikZ/releases/latest) (you can
+find a description of each file [here](dataset#usage)), we had to remove a
+considerable portion of Ti*k*Z drawings originating from
 [arXiv](https://arxiv.org), as the [arXiv non-exclusive
 license](https://arxiv.org/licenses/nonexclusive-distrib/1.0/license.html) does
 not permit redistribution. We do, however, release our [dataset creation

@@ -2,7 +2,7 @@
 This subproject can be used to recreate the DaTi*k*Z dataset from scratch.
 
 ## Installation
-DaTi*k*Z relies on a full [TeXLive](https://www.tug.org/texlive) installation,
+DaTi*k*Z relies on a full [TeX Live](https://www.tug.org/texlive) installation,
 and requires [ghostscript](https://www.ghostscript.com) and
 [poppler](https://poppler.freedesktop.org). Python dependencies can be
 installed as follows:
