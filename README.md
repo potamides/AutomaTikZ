@@ -1,4 +1,6 @@
 # AutomaTi*k*Z<br><sub><sup>Text-Guided Synthesis of Scientific Vector Graphics with Ti*k*Z</sup></sub>
+[![arXiv]( https://img.shields.io/badge/View%20on%20arXiv-B31B1B?logo=arxiv&labelColor=gray)](https://arxiv.org/abs/2310.00367)
+
 [AutomaTi*k*Z](https://github.com/potamides/AutomaTikZ) is a software library
 designed for the automatic creation of scientific vector graphics using natural
 language descriptions. Generating vector graphics such as SVGs directly can be
@@ -8,6 +10,9 @@ language that can be compiled into vector graphics, as an intermediary format.
 Ti*k*Z's human-oriented, high-level commands facilitate conditional language
 modeling with any large language model. AutomaTi*k*Z comes with a variety of
 tools for working with such models.
+
+> **Note**
+> If you make use of this work please [cite](https://arxiv.org/bibtex/2310.00367) it.
 
 ## Installation
 The base version of AutomaTi*k*Z, which already supports inference and
