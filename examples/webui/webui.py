@@ -90,6 +90,9 @@ def build_ui(model=list(models)[0], lock=False, lock_reason="locked", timeout=12
             # AutomaTi*k*Z: Text-Guided Synthesis of Scientific Vector Graphics with Ti*k*Z
 
             <p>
+              <a style="display:inline-block" href="https://colab.research.google.com/drive/14S22x_8VohMr9pbnlkB4FqtF4n81khIh">
+                <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab">
+              </a>
               <a style="display:inline-block" href="https://github.com/potamides/AutomaTikZ">
                 <img src="https://img.shields.io/badge/View%20on%20GitHub-green?logo=github&labelColor=gray" alt="View on GitHub">
               </a>
