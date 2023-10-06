@@ -1,4 +1,4 @@
-#!/usr/binenv python
+#!/usr/bin/env python
 
 from argparse import ArgumentParser
 from functools import lru_cache, partial
