@@ -26,12 +26,12 @@ For compilation of generated code, AutomaTi*k*Z additionally requires a full
 [ghostscript](https://www.ghostscript.com), and, for rasterization of vector
 graphics, [poppler](https://poppler.freedesktop.org).
 
-If your goal is to run the included [examples](examples) (e.g., to reproduce
-results) clone the repository and install it in editable mode like this,
-instead:
+If your goal is to run your own instance of the included [web
+UI](examples/webui), clone the repository and install it in editable mode like
+this, instead:
  ```sh
 git clone https://github.com/potamides/AutomaTikZ
-pip install -e AutomaTikZ[examples]
+pip install -e AutomaTikZ[webui]
  ```
 
 ## Usage

@@ -45,10 +45,14 @@ pdf = [
   "pdf2image~=1.16",
   "PyMuPDF~=1.22",
 ]
+webui = [
+  "gradio~=3.46",
+  "automatikz[pdf]"
+]
 examples = [
   "matplotlib",
   "tqdm",
-  "automatikz[evaluate,pdf]"
+  "automatikz[evaluate,webui]"
 ]
 all = [
   "automatikz[evaluate,pdf,examples]"
