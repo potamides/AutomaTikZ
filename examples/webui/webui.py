@@ -83,7 +83,7 @@ def check_inputs(caption: str, _: Optional[Image.Image]):
     if not caption:
         raise gr.Error("Prompt is required")
 
-def build_ui(model, lock, lock_reason, timeout):
+def build_ui(model=list(models)[0], lock=False, lock_reason="locked", timeout=120):
     with gr.Blocks(theme=gr.themes.Soft()) as demo:
         gr.Markdown(
             r'''
