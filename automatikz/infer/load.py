@@ -23,7 +23,7 @@ def load(path):
             model = AutoModel.from_pretrained(path)
             tokenizer = AutoTokenizer.from_pretrained(path)
             return model, tokenizer
-        except EnvironmentError:
+        except (EnvironmentError, ValueError):
             pass
 
     if (is_remote:=is_remote_url(path)) or isfile(path): # treat it as a pretrained mm projector
