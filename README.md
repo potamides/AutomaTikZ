@@ -20,7 +20,7 @@ The base version of AutomaTi*k*Z, which already supports inference and
 training, can be installed as regular Python package using
 [pip](https://pip.pypa.io/en/stable):
 ```sh
-pip install 'git+https://github.com/potamides/AutomaTikZ.git#egg=automatikz[pdf]'
+pip install 'automatikz[pdf] @ git+https://github.com/potamides/AutomaTikZ'
 ```
 For compilation of generated code, AutomaTi*k*Z additionally requires a full
 [TeX Live](https://www.tug.org/texlive) installation,
