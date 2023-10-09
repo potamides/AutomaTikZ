@@ -84,25 +84,29 @@ def check_inputs(caption: str, _: Optional[Image.Image]):
     if not caption:
         raise gr.Error("Prompt is required")
 
+def get_banner():
+    return r'''
+    # AutomaTi*k*Z: Text-Guided Synthesis of Scientific Vector Graphics with Ti*k*Z
+
+    <p>
+      <a style="display:inline-block" href="https://colab.research.google.com/drive/14S22x_8VohMr9pbnlkB4FqtF4n81khIh">
+        <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab">
+      </a>
+      <a style="display:inline-block" href="https://github.com/potamides/AutomaTikZ">
+        <img src="https://img.shields.io/badge/View%20on%20GitHub-green?logo=github&labelColor=gray" alt="View on GitHub">
+      </a>
+      <a style="display:inline-block" href="https://arxiv.org/abs/2310.00367">
+        <img src="https://img.shields.io/badge/View%20on%20arXiv-B31B1B?logo=arxiv&labelColor=gray" alt="View on arXiv">
+      </a>
+      <a style="display:inline-block" href="https://huggingface.co/spaces/nllg/AutomaTikZ">
+        <img src="https://huggingface.co/datasets/huggingface/badges/resolve/main/open-in-hf-spaces-sm.svg" alt="Open in HF Spaces">
+      </a>
+    </p>
+    '''
+
 def build_ui(model=list(models)[0], lock=False, lock_reason="locked", timeout=120):
     with gr.Blocks(theme=gr.themes.Soft()) as demo:
-        gr.Markdown(
-            r'''
-            # AutomaTi*k*Z: Text-Guided Synthesis of Scientific Vector Graphics with Ti*k*Z
-
-            <p>
-              <a style="display:inline-block" href="https://colab.research.google.com/drive/14S22x_8VohMr9pbnlkB4FqtF4n81khIh">
-                <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab">
-              </a>
-              <a style="display:inline-block" href="https://github.com/potamides/AutomaTikZ">
-                <img src="https://img.shields.io/badge/View%20on%20GitHub-green?logo=github&labelColor=gray" alt="View on GitHub">
-              </a>
-              <a style="display:inline-block" href="https://arxiv.org/abs/2310.00367">
-                <img src="https://img.shields.io/badge/View%20on%20arXiv-B31B1B?logo=arxiv&labelColor=gray" alt="View on arXiv">
-              </a>
-            </p>
-            '''
-        )
+        gr.Markdown(get_banner())
         with gr.Row(variant="panel"):
             with gr.Column():
                 caption = gr.Textbox(label="Caption", info="Describe what you want to generate.", placeholder="Type a caption...")

@@ -1,6 +1,7 @@
 # AutomaTi*k*Z<br><sub><sup>Text-Guided Synthesis of Scientific Vector Graphics with Ti*k*Z</sup></sub>
-[![arXiv]( https://img.shields.io/badge/View%20on%20arXiv-B31B1B?logo=arxiv&labelColor=gray)](https://arxiv.org/abs/2310.00367)
+[![arXiv](https://img.shields.io/badge/View%20on%20arXiv-B31B1B?logo=arxiv&labelColor=gray)](https://arxiv.org/abs/2310.00367)
 [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/14S22x_8VohMr9pbnlkB4FqtF4n81khIh)
+[![Spaces](https://huggingface.co/datasets/huggingface/badges/resolve/main/open-in-hf-spaces-sm.svg)](https://huggingface.co/spaces/nllg/AutomaTikZ)
 
 [AutomaTi*k*Z](https://github.com/potamides/AutomaTikZ) is a software library
 designed for the automatic creation of scientific vector graphics using natural
