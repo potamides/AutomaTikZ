@@ -14,6 +14,7 @@ from transformers import TextIteratorStreamer
 
 from automatikz.infer import TikzGenerator, load
 
+assets = files(__package__) / "assets" if __package__ else files("assets") / "."
 models = {
     "CLiMA-7b":  "nllg/tikz-clima-7b",
     "CLiMA-13b": "nllg/tikz-clima-13b",
@@ -121,7 +122,7 @@ def build_ui(model=list(models)[0], lock=False, lock_reason="locked", timeout=12
                 tikz_code = gr.Textbox(label="TikZ Code", info="Source code of the generated Image.", interactive=False, show_copy_button=True)
                 result_image = gr.Image(label="Compiled Image")
                 clear_btn.add([tikz_code, result_image])
-        gr.Examples(examples=str(files("assets") / "."), inputs=[caption, tikz_code, result_image])
+        gr.Examples(examples=str(assets), inputs=[caption, tikz_code, result_image])
 
         events = list()
         for listener in [caption.submit, run_btn.click]:
