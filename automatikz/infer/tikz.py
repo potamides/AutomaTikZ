@@ -179,7 +179,7 @@ class TikzGenerator:
         self.pipeline = TGP(
             model=model,
             tokenizer=getattr(tokenizer, "text", tokenizer),
-            device=current_device() if has_cuda() else -1,
+            **({} if hasattr(model, "hf_device_map") else {"device": current_device() if has_cuda() else -1}),
         )
         self.pipeline.model = torch.compile(model) # type: ignore
 

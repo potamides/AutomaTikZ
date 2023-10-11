@@ -16,11 +16,11 @@ from .. import train
 from ..model.clima import register
 from ..util import merge_and_unload
 
-def load(path):
+def load(path, **kwargs):
     register()
     for AutoModel in [AutoModelForSeq2SeqLM, AutoModelForCausalLM]:
         try:
-            model = AutoModel.from_pretrained(path)
+            model = AutoModel.from_pretrained(path, **kwargs)
             tokenizer = AutoTokenizer.from_pretrained(path)
             return model, tokenizer
         except (EnvironmentError, ValueError):
@@ -34,16 +34,17 @@ def load(path):
             6656: "30b",
             8192: "65b"
         }
-        model, tokenizer = train.clima.load(pretrain_mm_mlp_adapter=path, size=size_dict[hidden_size])
+        model, tokenizer = train.clima.load(pretrain_mm_mlp_adapter=path, size=size_dict[hidden_size], model_kwargs=kwargs)
     elif conf_file := get_file_from_repo(path, "adapter_config.json"): # local folder or on huggingface hub
         conf = PretrainedConfig.get_config_dict(conf_file)[0]
         base_model = conf["base_model_name_or_path"]
         model_type = conf.get("model_type", AutoConfig.from_pretrained(base_model).model_type)
-        model, tokenizer = getattr(train, model_type).load(base_model=base_model)
+        model, tokenizer = getattr(train, model_type).load(base_model=base_model, model_kwargs=kwargs)
         model = merge_and_unload(PeftModel.from_pretrained(
             model,
             path,
             torch_dtype=model.config.torch_dtype,
+            **kwargs
         ))
     else:
         raise ValueError(f"Cannot load model from {path}.")

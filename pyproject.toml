@@ -47,6 +47,7 @@ pdf = [
 ]
 webui = [
   "gradio~=3.46",
+  "accelerate~=0.23",
   "automatikz[pdf]"
 ]
 examples = [

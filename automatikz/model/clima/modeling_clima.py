@@ -51,13 +51,15 @@ class ClimaModel(LlamaModel):
         if hasattr(config, "use_mm_proj"):
             self.mm_projector = nn.Linear(config.mm_hidden_size, config.hidden_size)
 
-    def initialize_vision_modules(self, vision_tower, mask_token_id, pretrain_mm_mlp_adapter=None):
+    def initialize_vision_modules(self, vision_tower, mask_token_id, pretrain_mm_mlp_adapter=None, **kwargs):
         self.config.mm_vision_tower = vision_tower
 
         processor = CLIPProcessor.from_pretrained(vision_tower)
 
         if not hasattr(self, 'vision_tower'):
-            vision_tower = CLIPModel.from_pretrained(vision_tower, torch_dtype=self.dtype).to(self.device)
+            # hack to make clip model work with device_map="auto"
+            CLIPModel._no_split_modules = CLIPModel._no_split_modules or ['CLIPTextTransformer', 'CLIPVisionTransformer']
+            vision_tower = CLIPModel.from_pretrained(vision_tower, torch_dtype=self.dtype, **kwargs)
         else:
             vision_tower = self.vision_tower[0]
         vision_tower.requires_grad_(False)
@@ -85,8 +87,9 @@ class ClimaModel(LlamaModel):
     # https://stackoverflow.com/a/57208704
     def _apply(self, fn):
         super()._apply(fn)
-        self.vision_tower = [vis._apply(fn) for vis in self.vision_tower]
-        return self
+        if hasattr(self, "vision_tower"):
+            self.vision_tower = [vis._apply(fn) for vis in self.vision_tower]
+            return self
 
     def get_vision_features(self, text_or_image, *args, **kwargs):
         if isinstance(text_or_image, (BatchEncoding, dict)):

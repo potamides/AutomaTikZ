@@ -43,7 +43,7 @@ def inference(
     compile_timeout: int
 ):
     generate = TikzGenerator(
-        *cached_load(model_name),
+        *cached_load(model_name, device_map="auto"),
         temperature=temperature,
         top_p=top_p,
         top_k=top_k,

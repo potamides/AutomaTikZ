@@ -8,7 +8,7 @@ from peft import LoraConfig, get_peft_model
 import torch
 from torch.random import initial_seed
 from torch.utils.data import Dataset
-from transformers import AddedToken, TrainingArguments
+from transformers import TrainingArguments
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import logging
 from transformers.utils.hub import is_remote_url
@@ -20,11 +20,10 @@ from .pretrain import DataCollatorForSupervisedDataset
 
 logger = logging.get_logger("transformers")
 
-def load(vision_tower="laion/CLIP-ViT-H-14-laion2B-s32B-b79K", pretrain_mm_mlp_adapter=None, *args, **kwargs):
+def load(vision_tower="laion/CLIP-ViT-H-14-laion2B-s32B-b79K", pretrain_mm_mlp_adapter=None, model_kwargs={}, **kwargs):
     model, tokenizer =  llama_load(
-        *args,
         base_class=ClimaForCausalLM,
-        mask_token=AddedToken("<0x1A>" , lstrip=False, rstrip=False),
+        model_kwargs=model_kwargs,
         **kwargs
     )
 
@@ -35,7 +34,8 @@ def load(vision_tower="laion/CLIP-ViT-H-14-laion2B-s32B-b79K", pretrain_mm_mlp_a
     processor, _ = model.get_model().initialize_vision_modules( # type: ignore
         vision_tower=vision_tower,
         mask_token_id=tokenizer.mask_token_id,
-        pretrain_mm_mlp_adapter=pretrain_mm_mlp_adapter
+        pretrain_mm_mlp_adapter=pretrain_mm_mlp_adapter,
+        **model_kwargs
     ).values()
 
     return model, SimpleNamespace(text=tokenizer, image=processor)

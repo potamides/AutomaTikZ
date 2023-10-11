@@ -20,7 +20,7 @@ KEYS_TO_MODIFY_MAPPING = {
 }
 
 # exact clip model is EVA-CLIP/EVA01_CLIP_g_14_psz14_s11B.pt
-def load(base_model="decapoda-research/llama-{size}-hf", size="7b"):
+def load(base_model="decapoda-research/llama-{size}-hf", size="7b", model_kwargs={}):
     assert size in ["7b", "13b"]
 
     #import os
@@ -51,10 +51,11 @@ def load(base_model="decapoda-research/llama-{size}-hf", size="7b"):
         blip_model = Blip2ForConditionalGeneration.from_pretrained(blip_name,
             config=blipconf,
             low_cpu_mem_usage=True,
-            torch_dtype=torch.float16
+            torch_dtype=torch.float16,
+            **model_kwargs
         )
 
-    blip_model.language_model, llama_tokenizer = load_llama(base_model, size, add_bos_token=False) # type: ignore
+    blip_model.language_model, llama_tokenizer = load_llama(base_model, size, add_bos_token=False, model_kwargs=model_kwargs) # type: ignore
     linear = torch.load(DownloadManager().download(linear_name))['model'] # type: ignore
     blip_model.language_projection.load_state_dict(dict( # type: ignore
         weight=linear['llama_proj.weight'],

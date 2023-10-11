@@ -30,14 +30,15 @@ def temporary_change_attributes(something, **kwargs):
         for k, v in previous_values.items():
             setattr(something, k, v)
 
-def load(base_model="decapoda-research/llama-{size}-hf", size="7b", base_class=LlamaForCausalLM, **tokenizer_kwargs):
+def load(base_model="decapoda-research/llama-{size}-hf", size="7b", base_class=LlamaForCausalLM, model_kwargs={}):
     base_model = base_model.format(size=size)
     token = lambda s: AddedToken(s, lstrip=False, rstrip=False)
     model = base_class.from_pretrained(base_model,
         pad_token_id=0,
         bos_token_id=1,
         eos_token_id=2,
-        torch_dtype=torch.float16
+        torch_dtype=torch.float16,
+        **model_kwargs
     )
     tokenizer = LlamaTokenizer.from_pretrained(base_model,
         model_max_length=1200,
@@ -46,8 +47,8 @@ def load(base_model="decapoda-research/llama-{size}-hf", size="7b", base_class=L
         eos_token=token("</s>"),
         pad_token=token("<unk>"), # same as unk_token
         sep_token=token("<0x1D>"), # ascii group separator
+        mask_token=token("<0x1A>" ), # ascii sup token, only used by clima
         padding_side="right", # Note: only for training, need to change to "left" for batched inference
-        **tokenizer_kwargs
     )
 
     return model, tokenizer
