@@ -11,3 +11,14 @@ def optional_dependencies(error: str = "ignore"):
         elif error == "warn":
             msg = f'Missing optional dependency "{e.name}". Use pip or conda to install.'
             print(f'Warning: {msg}')
+
+@contextmanager
+def temporary_change_attributes(something, **kwargs):
+    previous_values = {k: getattr(something, k) for k in kwargs}
+    for k, v in kwargs.items():
+        setattr(something, k, v)
+    try:
+        yield
+    finally:
+        for k, v in previous_values.items():
+            setattr(something, k, v)

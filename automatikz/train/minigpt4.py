@@ -9,7 +9,8 @@ from transformers import (
     LlamaForCausalLM,
 )
 
-from .llama import load as load_llama, temporary_change_attributes
+from .llama import load as load_llama
+from ..util import temporary_change_attributes
 
 KEYS_TO_MODIFY_MAPPING = {
     ".positional_embedding":".embeddings.position_embedding.weight",

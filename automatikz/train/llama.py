@@ -1,4 +1,3 @@
-from contextlib import contextmanager
 from copy import deepcopy
 import os
 from typing import List
@@ -15,20 +14,9 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import logging
 
-from ..util import PeftTrainer, prepare_model_for_training, save_peft_model
+from ..util import PeftTrainer, prepare_model_for_training, save_peft_model, temporary_change_attributes
 
 logger = logging.get_logger("transformers")
-
-@contextmanager
-def temporary_change_attributes(something, **kwargs):
-    previous_values = {k: getattr(something, k) for k in kwargs}
-    for k, v in kwargs.items():
-        setattr(something, k, v)
-    try:
-        yield
-    finally:
-        for k, v in previous_values.items():
-            setattr(something, k, v)
 
 def load(base_model="decapoda-research/llama-{size}-hf", size="7b", base_class=LlamaForCausalLM, model_kwargs={}):
     base_model = base_model.format(size=size)
