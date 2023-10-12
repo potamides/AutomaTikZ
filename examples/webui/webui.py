@@ -124,7 +124,7 @@ def build_ui(model=list(models)[0], lock=False, rasterize=False, lock_reason="lo
                     top_k = gr.Slider(minimum=0, maximum=100, step=10, value=0, label="Top-K")
                     expand_to_square = gr.Checkbox(value=True, label="Expand image to square")
                 with gr.Row():
-                    run_btn = gr.Button("Run")
+                    run_btn = gr.Button("Run", variant="primary")
                     stop_btn = gr.Button("Stop")
                     clear_btn = gr.ClearButton([caption])
             with gr.Column():
