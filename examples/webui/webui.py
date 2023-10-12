@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from argparse import ArgumentParser
-from functools import lru_cache, partial
+from functools import lru_cache
 from importlib.resources import files
 from multiprocessing.pool import ThreadPool
 from tempfile import NamedTemporaryFile
@@ -65,29 +65,25 @@ def inference(
 
 def tex_compile(
     code: str,
-    finished: str | bool,
-    compile_timeout: int,
+    timeout: int,
     rasterize: bool
 ):
-    if not finished or finished == "False":
-        yield None
-    else:
-        tikzdoc = TikzDocument(code, timeout=compile_timeout)
-        if not tikzdoc.has_content:
-            if tikzdoc.compiled_with_errors:
-                raise gr.Error("TikZ code did not compile!") # type: ignore
-            else:
-                gr.Warning("TikZ code compiled to an empty image!") # type: ignore
-        elif tikzdoc.compiled_with_errors:
-            gr.Warning("TikZ code compiled with errors!") # type: ignore
-
-        if rasterize:
-            yield tikzdoc.rasterize()
+    tikzdoc = TikzDocument(code, timeout=timeout)
+    if not tikzdoc.has_content:
+        if tikzdoc.compiled_with_errors:
+            raise gr.Error("TikZ code did not compile!") # type: ignore
         else:
-            with NamedTemporaryFile(suffix=".svg", buffering=0) as tmpfile:
-                if pdf:=tikzdoc.pdf:
-                    tmpfile.write(convert_to_svg(pdf).encode())
-                yield tmpfile.name if pdf else None
+            gr.Warning("TikZ code compiled to an empty image!") # type: ignore
+    elif tikzdoc.compiled_with_errors:
+        gr.Warning("TikZ code compiled with errors!") # type: ignore
+
+    if rasterize:
+        yield tikzdoc.rasterize()
+    else:
+        with NamedTemporaryFile(suffix=".svg", buffering=0) as tmpfile:
+            if pdf:=tikzdoc.pdf:
+                tmpfile.write(convert_to_svg(pdf).encode())
+            yield tmpfile.name if pdf else None
 
 def check_inputs(caption: str, _: Optional[Image.Image]):
     if not caption:
@@ -156,13 +152,17 @@ def build_ui(model=list(models)[0], lock=False, rasterize=False, lock_reason="lo
                 inputs=[model, caption, image, temperature, top_p, top_k, expand_to_square],
                 outputs=[tikz_code, result_image, finished]
             )
+
+            def tex_compile_if_finished(finished, *args):
+                yield from (tex_compile(*args, timeout=timeout, rasterize=rasterize) if finished == "True" else [])
+
             compile_event = generate_event.then(
                 lambda finished: gr.Tabs(selected=1) if finished == "True" else gr.Tabs(),
                 inputs=finished,
                 outputs=tabs, # type: ignore
             ).then(
-                partial(tex_compile, compile_timeout=timeout, rasterize=rasterize),
-                inputs=[tikz_code, finished],
+                tex_compile_if_finished,
+                inputs=[finished, tikz_code],
                 outputs=result_image
             )
             events.extend([generate_event, compile_event])
