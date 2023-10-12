@@ -40,7 +40,8 @@ def inference(
     top_p: float,
     top_k: int,
     expand_to_square: bool,
-    compile_timeout: int
+    compile_timeout: int,
+    rasterize: bool
 ):
     generate = TikzGenerator(
         *cached_load(model_name, device_map="auto"),
@@ -76,10 +77,13 @@ def inference(
     elif tikzdoc.compiled_with_errors:
         gr.Warning("TikZ code compiled with errors!") # type: ignore
 
-    with NamedTemporaryFile(suffix=".svg", buffering=0) as tmpfile:
-        if pdf:=tikzdoc.pdf:
-            tmpfile.write(convert_to_svg(pdf).encode())
-        yield tikzdoc.code, tmpfile.name if pdf else None
+    if rasterize:
+        yield tikzdoc.code, tikzdoc.rasterize(512)
+    else:
+        with NamedTemporaryFile(suffix=".svg", buffering=0) as tmpfile:
+            if pdf:=tikzdoc.pdf:
+                tmpfile.write(convert_to_svg(pdf).encode())
+            yield tikzdoc.code, tmpfile.name if pdf else None
 
 def check_inputs(caption: str, _: Optional[Image.Image]):
     if not caption:
@@ -105,7 +109,7 @@ def get_banner():
     </p>
     ''')
 
-def build_ui(model=list(models)[0], lock=False, lock_reason="locked", timeout=120):
+def build_ui(model=list(models)[0], lock=False, svg=True, lock_reason="locked", timeout=120):
     with gr.Blocks(theme=gr.themes.Soft()) as demo:
         gr.Markdown(get_banner())
         with gr.Row(variant="panel"):
@@ -136,7 +140,7 @@ def build_ui(model=list(models)[0], lock=False, lock_reason="locked", timeout=12
                 inputs=[caption, image],
                 queue=False
             ).success(
-                partial(inference, compile_timeout=timeout),
+                partial(inference, compile_timeout=timeout, rasterize=not svg),
                 inputs=[model, caption, image, temperature, top_p, top_k, expand_to_square],
                 outputs=[tikz_code, result_image]
             )
@@ -169,6 +173,14 @@ def parse_args():
         "--share",
         action="store_true",
         help="Whether to create a publicly shareable link for the interface.",
+    )
+    argument_parser.add_argument(
+        "--svg",
+        action="store_true",
+        help=(
+            "Whether to render the generated image as a vector graphic. "
+            "Looks better but it is not that well supported by Gradio."
+        )
     )
     argument_parser.add_argument(
         "--timeout",
