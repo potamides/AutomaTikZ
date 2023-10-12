@@ -109,7 +109,7 @@ def get_banner():
     </p>
     ''')
 
-def build_ui(model=list(models)[0], lock=False, svg=True, lock_reason="locked", timeout=120):
+def build_ui(model=list(models)[0], lock=False, svg=False, lock_reason="locked", timeout=120):
     with gr.Blocks(theme=gr.themes.Soft()) as demo:
         gr.Markdown(get_banner())
         with gr.Row(variant="panel"):
