@@ -157,14 +157,13 @@ def build_ui(model=list(models)[0], lock=False, rasterize=False, lock_reason="lo
                 outputs=[tikz_code, result_image, finished]
             )
             compile_event = generate_event.then(
-                partial(tex_compile, compile_timeout=timeout, rasterize=rasterize),
-                inputs=[tikz_code, finished],
-                outputs=result_image
-            )
-            compile_event.success(
                 lambda finished: gr.Tabs(selected=1) if finished == "True" else gr.Tabs(),
                 inputs=finished,
                 outputs=tabs, # type: ignore
+            ).then(
+                partial(tex_compile, compile_timeout=timeout, rasterize=rasterize),
+                inputs=[tikz_code, finished],
+                outputs=result_image
             )
             events.extend([generate_event, compile_event])
 
