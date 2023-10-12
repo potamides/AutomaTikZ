@@ -13,7 +13,7 @@ import fitz
 import gradio as gr
 from transformers import TextIteratorStreamer
 
-from automatikz.infer import TikzGenerator, load
+from automatikz.infer import TikzDocument, TikzGenerator, load
 
 assets = files(__package__) / "assets" if __package__ else files("assets") / "."
 models = {
@@ -40,8 +40,6 @@ def inference(
     top_p: float,
     top_k: int,
     expand_to_square: bool,
-    compile_timeout: int,
-    rasterize: bool
 ):
     generate = TikzGenerator(
         *cached_load(model_name, device_map="auto"),
@@ -62,28 +60,34 @@ def inference(
     generated_text = ""
     for new_text in streamer:
         generated_text += new_text
-        yield generated_text, None
+        yield generated_text, None, False
+    yield async_result.get().code, None, True
 
-    tikzdoc = async_result.get()
-    tikzdoc.timeout = compile_timeout
-
-    if not tikzdoc.has_content:
-        if tikzdoc.status == -1:
-            gr.Warning(f"Compilation timed out ({compile_timeout} seconds)!") # type: ignore
-        elif tikzdoc.compiled_with_errors:
-            gr.Warning("TikZ code did not compile!") # type: ignore
-        else:
-            gr.Warning("TikZ code compiled to an empty image!") # type: ignore
-    elif tikzdoc.compiled_with_errors:
-        gr.Warning("TikZ code compiled with errors!") # type: ignore
-
-    if rasterize:
-        yield tikzdoc.code, tikzdoc.rasterize(512)
+def tex_compile(
+    code: str,
+    finished: str | bool,
+    compile_timeout: int,
+    rasterize: bool
+):
+    if not finished or finished == "False":
+        yield None
     else:
-        with NamedTemporaryFile(suffix=".svg", buffering=0) as tmpfile:
-            if pdf:=tikzdoc.pdf:
-                tmpfile.write(convert_to_svg(pdf).encode())
-            yield tikzdoc.code, tmpfile.name if pdf else None
+        tikzdoc = TikzDocument(code, timeout=compile_timeout)
+        if not tikzdoc.has_content:
+            if tikzdoc.compiled_with_errors:
+                raise gr.Error("TikZ code did not compile!") # type: ignore
+            else:
+                gr.Warning("TikZ code compiled to an empty image!") # type: ignore
+        elif tikzdoc.compiled_with_errors:
+            gr.Warning("TikZ code compiled with errors!") # type: ignore
+
+        if rasterize:
+            yield tikzdoc.rasterize()
+        else:
+            with NamedTemporaryFile(suffix=".svg", buffering=0) as tmpfile:
+                if pdf:=tikzdoc.pdf:
+                    tmpfile.write(convert_to_svg(pdf).encode())
+                yield tmpfile.name if pdf else None
 
 def check_inputs(caption: str, _: Optional[Image.Image]):
     if not caption:
@@ -109,8 +113,8 @@ def get_banner():
     </p>
     ''')
 
-def build_ui(model=list(models)[0], lock=False, svg=False, lock_reason="locked", timeout=120):
-    with gr.Blocks(theme=gr.themes.Soft()) as demo:
+def build_ui(model=list(models)[0], lock=False, rasterize=False, lock_reason="locked", timeout=120):
+    with gr.Blocks(theme=gr.themes.Soft(), title="AutomaTikZ") as demo:
         gr.Markdown(get_banner())
         with gr.Row(variant="panel"):
             with gr.Column():
@@ -128,25 +132,45 @@ def build_ui(model=list(models)[0], lock=False, svg=False, lock_reason="locked",
                     stop_btn = gr.Button("Stop")
                     clear_btn = gr.ClearButton([caption])
             with gr.Column():
-                tikz_code = gr.Textbox(label="TikZ Code", info="Source code of the generated Image.", interactive=False, show_copy_button=True)
-                result_image = gr.Image(label="Compiled Image")
-                clear_btn.add([tikz_code, result_image])
+                with gr.Tabs() as tabs:
+                    with gr.TabItem(label:="TikZ Code", id=0):
+                        info = "Source code of the generated image."
+                        tikz_code = gr.Code(label=label, show_label=False, info=info, interactive=False)
+                    with gr.TabItem(label:="Compiled Image", id=1):
+                        result_image = gr.Image(label=label, show_label=False, show_share_button=rasterize)
+                    clear_btn.add([tikz_code, result_image])
         gr.Examples(examples=str(assets), inputs=[caption, tikz_code, result_image])
 
         events = list()
+        finished = gr.Textbox(visible=False) # hack to cancel compile on canceled inference
         for listener in [caption.submit, run_btn.click]:
-            event = listener(
+            generate_event = listener(
                 check_inputs,
                 inputs=[caption, image],
                 queue=False
             ).success(
-                partial(inference, compile_timeout=timeout, rasterize=not svg),
+                lambda: gr.Tabs(selected=0),
+                outputs=tabs, # type: ignore
+            ).then(
+                inference,
                 inputs=[model, caption, image, temperature, top_p, top_k, expand_to_square],
-                outputs=[tikz_code, result_image]
+                outputs=[tikz_code, result_image, finished]
             )
-            events.append(event)
+            compile_event = generate_event.then(
+                partial(tex_compile, compile_timeout=timeout, rasterize=rasterize),
+                inputs=[tikz_code, finished],
+                outputs=result_image
+            )
+            compile_event.success(
+                lambda finished: gr.Tabs(selected=1) if finished == "True" else gr.Tabs(),
+                inputs=finished,
+                outputs=tabs, # type: ignore
+            )
+            events.extend([generate_event, compile_event])
+
         model.select(lambda model_name: gr.Image(visible="clima" in model_name), inputs=model, outputs=image)
-        stop_btn.click(None, None, None, cancels=events)
+        for btn in [clear_btn, stop_btn]:
+            btn.click(None, None, None, cancels=events)
         return demo
 
 def parse_args():
@@ -175,12 +199,9 @@ def parse_args():
         help="Whether to create a publicly shareable link for the interface.",
     )
     argument_parser.add_argument(
-        "--svg",
+        "--rasterize",
         action="store_true",
-        help=(
-            "Whether to render the generated image as a vector graphic. "
-            "Looks better but it is not that well supported by Gradio."
-        )
+        help= "Whether to rasterize the generated image before displaying it."
     )
     argument_parser.add_argument(
         "--timeout",
