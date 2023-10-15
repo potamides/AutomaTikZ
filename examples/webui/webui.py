@@ -110,18 +110,24 @@ def get_banner():
     </p>
     ''')
 
-def remove_darkness(theme):
+def remove_darkness(stylable):
     """
-    Patch a theme to only contain light mode colors
+    Patch gradio to only contain light mode colors.
     """
-    for color in dir(theme):
-        if color.endswith("_dark") and color in signature(theme.set).parameters:
-            setattr(theme, color, None)
-    return theme
+    if isinstance(stylable, gr.themes.Base): # remove dark variants from the entire theme
+        params = signature(stylable.set).parameters
+        colors = {color: getattr(stylable, color.removesuffix("_dark")) for color in dir(stylable) if color in params}
+        return stylable.set(**colors)
+    elif isinstance(stylable, gr.Blocks): # also handle components which do not use the theme (e.g. modals)
+        stylable.load(_js="() => document.querySelectorAll('.dark').forEach(el => el.classList.remove('dark'))")
+        return stylable
+    else:
+        raise ValueError
 
 def build_ui(model=list(models)[0], lock=False, rasterize=False, force_light=False, lock_reason="locked", timeout=120):
     theme = remove_darkness(gr.themes.Soft()) if force_light else gr.themes.Soft()
-    with gr.Blocks(theme=theme, title="AutomaTikZ") as demo:
+    with gr.Blocks(theme=theme, title="AutomaTikZ") as demo: # type: ignore
+        if force_light: remove_darkness(demo)
         gr.Markdown(get_banner())
         with gr.Row(variant="panel"):
             with gr.Column():
