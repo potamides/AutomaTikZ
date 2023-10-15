@@ -3,10 +3,11 @@
 from argparse import ArgumentParser
 from functools import lru_cache
 from importlib.resources import files
+from inspect import signature
 from multiprocessing.pool import ThreadPool
 from tempfile import NamedTemporaryFile
-from typing import Optional
 from textwrap import dedent
+from typing import Optional
 
 from PIL import Image
 import fitz
@@ -90,7 +91,7 @@ def check_inputs(caption: str, _: Optional[Image.Image]):
         raise gr.Error("Prompt is required")
 
 def get_banner():
-    return dedent('''
+    return dedent('''\
     # AutomaTi*k*Z: Text-Guided Synthesis of Scientific Vector Graphics with Ti*k*Z
 
     <p>
@@ -109,12 +110,27 @@ def get_banner():
     </p>
     ''')
 
-def build_ui(model=list(models)[0], lock=False, rasterize=False, lock_reason="locked", timeout=120):
-    with gr.Blocks(theme=gr.themes.Soft(), title="AutomaTikZ") as demo:
+def remove_darkness(theme):
+    """
+    Patch a theme to only contain light mode colors
+    """
+    for color in dir(theme):
+        if color.endswith("_dark") and color in signature(theme.set).parameters:
+            setattr(theme, color, None)
+    return theme
+
+def build_ui(model=list(models)[0], lock=False, rasterize=False, force_light=False, lock_reason="locked", timeout=120):
+    theme = remove_darkness(gr.themes.Soft()) if force_light else gr.themes.Soft()
+    with gr.Blocks(theme=theme, title="AutomaTikZ") as demo:
         gr.Markdown(get_banner())
         with gr.Row(variant="panel"):
             with gr.Column():
-                caption = gr.Textbox(label="Caption", info="Describe what you want to generate.", placeholder="Type a caption...")
+                info = (
+                    "Describe what you want to generate. "
+                    "Scientific graphics benefit from captions with at least 30 tokens (see examples below), "
+                    "while simple objects work best with shorter, 2-3 word captions."
+                )
+                caption = gr.Textbox(label="Caption", info=info, placeholder="Type a caption...")
                 image = gr.Image(label="Image Input (optional)", type="pil")
                 label = "Model" + (f" ({lock_reason})" if lock else "")
                 model = gr.Dropdown(label=label, choices=list(models.items()), value=models[model], interactive=not lock) # type: ignore
@@ -201,6 +217,11 @@ def parse_args():
         "--rasterize",
         action="store_true",
         help= "Whether to rasterize the generated image before displaying it."
+    )
+    argument_parser.add_argument(
+        "--force_light",
+        action="store_true",
+        help= "Whether to enforce light theme (useful for vector graphics with dark text)."
     )
     argument_parser.add_argument(
         "--timeout",
