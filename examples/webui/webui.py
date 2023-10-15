@@ -163,6 +163,7 @@ def build_ui(model=list(models)[0], lock=False, rasterize=False, force_light=Fal
             ).success(
                 lambda: gr.Tabs(selected=0),
                 outputs=tabs, # type: ignore
+                queue=False
             ).then(
                 inference,
                 inputs=[model, caption, image, temperature, top_p, top_k, expand_to_square],
@@ -176,6 +177,7 @@ def build_ui(model=list(models)[0], lock=False, rasterize=False, force_light=Fal
                 lambda finished: gr.Tabs(selected=1) if finished == "True" else gr.Tabs(),
                 inputs=finished,
                 outputs=tabs, # type: ignore
+                queue=False
             ).then(
                 tex_compile_if_finished,
                 inputs=[finished, tikz_code],
@@ -183,9 +185,9 @@ def build_ui(model=list(models)[0], lock=False, rasterize=False, force_light=Fal
             )
             events.extend([generate_event, compile_event])
 
-        model.select(lambda model_name: gr.Image(visible="clima" in model_name), inputs=model, outputs=image)
+        model.select(lambda model_name: gr.Image(visible="clima" in model_name), inputs=model, outputs=image, queue=False)
         for btn in [clear_btn, stop_btn]:
-            btn.click(None, None, None, cancels=events)
+            btn.click(fn=None, cancels=events, queue=False)
         return demo
 
 def parse_args():
