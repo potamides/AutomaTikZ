@@ -38,14 +38,14 @@ pip install -e AutomaTikZ[webui]
 
 ## Usage
 As long as the required dependencies are installed, using AutomaTi*k*Z to
-generate, compile, render, and save Ti*k*Z drawings is straight forward.
+generate, compile, render, and save Ti*k*Z drawings is straightforward.
 ```python
 from automatikz.infer import TikzGenerator, load
 
 generate = TikzGenerator(*load("nllg/tikz-clima-13b"), stream=True)
 caption = (
-    "Visual representation of a multi-layer perceptron:"
-    "an interconnected network of nodes, showcasing the structure of input,"
+    "Visual representation of a multi-layer perceptron: "
+    "an interconnected network of nodes, showcasing the structure of input, "
     "hidden, and output layers that facilitate complex pattern recognition."
 )
 
