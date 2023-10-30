@@ -21,7 +21,7 @@ KEYS_TO_MODIFY_MAPPING = {
 }
 
 # exact clip model is EVA-CLIP/EVA01_CLIP_g_14_psz14_s11B.pt
-def load(base_model="kchoi/llama-{size}-hf", size="7b", model_kwargs={}):
+def load(base_model="huggyllama/llama-{size}", size="7b", model_kwargs={}):
     assert size in ["7b", "13b"]
 
     #import os

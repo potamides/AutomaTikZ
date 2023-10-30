@@ -18,7 +18,7 @@ from ..util import PeftTrainer, prepare_model_for_training, save_peft_model, tem
 
 logger = logging.get_logger("transformers")
 
-def load(base_model="kchoi/llama-{size}-hf", size="7b", base_class=LlamaForCausalLM, model_kwargs={}):
+def load(base_model="huggyllama/llama-{size}", size="7b", base_class=LlamaForCausalLM, model_kwargs={}):
     base_model = base_model.format(size=size)
     token = lambda s: AddedToken(s, lstrip=False, rstrip=False)
     model = base_class.from_pretrained(base_model,
