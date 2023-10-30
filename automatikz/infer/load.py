@@ -5,9 +5,6 @@ from peft import PeftModel
 import torch
 from transformers import (
     AutoConfig,
-    AutoModelForCausalLM,
-    AutoModelForSeq2SeqLM,
-    AutoTokenizer,
     PretrainedConfig,
 )
 from transformers.utils.hub import get_file_from_repo, is_remote_url
@@ -18,14 +15,6 @@ from ..util import merge_and_unload, temporary_change_attributes
 
 def load(path, **kwargs):
     register()
-    for AutoModel in [AutoModelForSeq2SeqLM, AutoModelForCausalLM]:
-        try:
-            model = AutoModel.from_pretrained(path, **kwargs)
-            tokenizer = AutoTokenizer.from_pretrained(path)
-            return model, tokenizer
-        except (EnvironmentError, ValueError):
-            pass
-
     if (is_remote:=is_remote_url(path)) or isfile(path): # treat it as a pretrained mm projector
         hidden_size = len(torch.load(DL().download(path) if is_remote else path)['model.mm_projector.weight']) # type: ignore
         size_dict = {
