@@ -23,7 +23,7 @@ from pdfCropMargins import crop
 from regex import search
 
 from llm.chat import WizardLM
-from text2tikz.loaders import (
+from datikz.loaders import (
     arxiv,
     gpt4,
     chatgpt,
