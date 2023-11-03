@@ -85,7 +85,7 @@ class ChatBot(ABC):
         return completions[0] if isinstance(instructions, str) else completions
 
 class WizardLM(ChatBot):
-    def __init__(self, *args, model="localmodels/WizardLM-13B-1.0", **kwargs):
+    def __init__(self, *args, model="TheBloke/WizardLM-13B-1.0-fp16", **kwargs):
         super().__init__(*args, model=model, **kwargs)
 
     def _gen_prompts(self, instructions, inputs):
