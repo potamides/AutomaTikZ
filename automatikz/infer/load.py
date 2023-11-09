@@ -1,12 +1,9 @@
 from os.path import isfile
 
 from datasets import DownloadManager as DL
-from peft import PeftModel
+from peft import PeftModel, LoraConfig # type: ignore
 import torch
-from transformers import (
-    AutoConfig,
-    PretrainedConfig,
-)
+from transformers import AutoConfig
 from transformers.utils.hub import get_file_from_repo, is_remote_url
 
 from .. import train
@@ -25,9 +22,9 @@ def load(path, **kwargs):
         }
         model, tokenizer = train.clima.load(pretrain_mm_mlp_adapter=path, size=size_dict[hidden_size], model_kwargs=kwargs)
     elif conf_file := get_file_from_repo(path, "adapter_config.json"): # local folder or on huggingface hub
-        conf = PretrainedConfig.get_config_dict(conf_file)[0]
+        conf = LoraConfig.from_json_file(conf_file)
         base_model = conf["base_model_name_or_path"]
-        model_type = conf.get("model_type", AutoConfig.from_pretrained(base_model).model_type)
+        model_type = conf.pop("model_type", AutoConfig.from_pretrained(base_model).model_type)
         model, tokenizer = getattr(train, model_type).load(base_model=base_model, model_kwargs=kwargs)
         # hack to load adapter weights into ram before merging which saves gpu memory
         with temporary_change_attributes(torch.cuda, is_available=lambda: False):
@@ -35,6 +32,7 @@ def load(path, **kwargs):
                 model,
                 path,
                 torch_dtype=model.config.torch_dtype,
+                config=LoraConfig(**conf),
                 **kwargs
             ))
     else:
