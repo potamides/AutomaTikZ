@@ -94,8 +94,7 @@ class TikzFinder():
             # remove any labels
             for label in cap_soup.find_all("label"):
                 label.delete() # type: ignore
-            # convert the caption to plaintext (e.g. \textbf{bla} -> bla)
-            caption = "".join(item for item in cap_soup.text)
+            caption = str(cap_soup)
         except:
             pass
 
