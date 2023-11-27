@@ -13,7 +13,7 @@ Ti*k*Z's human-oriented, high-level commands facilitate conditional language
 modeling with any large language model. AutomaTi*k*Z comes with a variety of
 tools for working with such models.
 
-> **Note**
+> [!NOTE]
 > If you make use of this work please [cite](https://arxiv.org/bibtex/2310.00367) it.
 
 ## Installation
