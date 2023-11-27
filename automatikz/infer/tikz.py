@@ -4,7 +4,7 @@ from io import BytesIO
 from os import environ
 from os.path import isfile, join
 from re import MULTILINE, escape, search, sub
-from subprocess import CalledProcessError, DEVNULL, TimeoutExpired, check_output
+from subprocess import CalledProcessError, DEVNULL, TimeoutExpired
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Optional, Union
 import warnings
@@ -17,7 +17,7 @@ from transformers import TextGenerationPipeline as TGP, TextStreamer
 from transformers.utils import logging
 from transformers.utils.hub import is_remote_url
 
-from ..util import optional_dependencies
+from ..util import optional_dependencies, check_output
 
 with optional_dependencies():
     from pdf2image.pdf2image import convert_from_bytes
