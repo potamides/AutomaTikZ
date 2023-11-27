@@ -14,7 +14,7 @@ def _load_worker(paper):
                 "date": paper['meta']['timestamp'], # type: ignore
                 "uri": paper['meta']['url'] # type: ignore
             })
-    except AssertionError:
+    except (AssertionError, RecursionError): # FIXME: where does the recursion error come from?
         pass
     return found
 

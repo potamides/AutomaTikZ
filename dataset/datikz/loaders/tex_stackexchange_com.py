@@ -1,6 +1,7 @@
 from collections import defaultdict
 from datetime import datetime
 import xml.etree.ElementTree as etree
+from xml.etree.ElementTree import ParseError
 
 from bs4 import BeautifulSoup
 
@@ -80,23 +81,26 @@ class TeXExchangeParser():
         self.tags = tags
 
     def load(self):
-        for _, elem in etree.iterparse(self.xml_path, events=('end',)):
-            if elem.tag == "row":
-                attribs = defaultdict(lambda: None, elem.attrib)
-                if is_question(attribs):
-                    if has_answers(attribs) and all(f"<{tag}>" in attribs.get("Tags", "") for tag in self.tags):
-                        trim_attribs(attribs, "question")
-                        self.questions[attribs["Id"]] = attribs
-                    else:
-                        # if the question has wrongs tags or no answers, discard it
-                        continue
-                elif is_answer(attribs):
-                    # if is accepted answer, append answer Body to relevant questions "AcceptedAnswer" field
-                    # if the answer's score > min_score
-                    # append the answer to the relevant question's OtherAnswers dict
-                    self.add_answer(attribs)
-                    yield from self.check_complete(attribs)
-                elem.clear()
+        try:
+            for _, elem in etree.iterparse(self.xml_path, events=('end',)):
+                if elem.tag == "row":
+                    attribs = defaultdict(lambda: None, elem.attrib)
+                    if is_question(attribs):
+                        if has_answers(attribs) and all(f"<{tag}>" in attribs.get("Tags", "") for tag in self.tags):
+                            trim_attribs(attribs, "question")
+                            self.questions[attribs["Id"]] = attribs
+                        else:
+                            # if the question has wrongs tags or no answers, discard it
+                            continue
+                    elif is_answer(attribs):
+                        # if is accepted answer, append answer Body to relevant questions "AcceptedAnswer" field
+                        # if the answer's score > min_score
+                        # append the answer to the relevant question's OtherAnswers dict
+                        self.add_answer(attribs)
+                        yield from self.check_complete(attribs)
+                    elem.clear()
+        except ParseError:
+            return
 
     def is_above_threshold(self, a_attribs):
         assert is_answer(a_attribs), "Must be an answer to be above threshold"

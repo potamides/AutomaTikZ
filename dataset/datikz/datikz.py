@@ -6,33 +6,36 @@ from functools import partial
 from io import BytesIO
 from itertools import islice
 from multiprocessing.pool import Pool
+from os import getpgid, killpg
 from re import sub
-from subprocess import CalledProcessError, DEVNULL, TimeoutExpired, run
 from os import getenv, pathsep
+from signal import SIGKILL
+from subprocess import CalledProcessError, DEVNULL, Popen, TimeoutExpired
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-import fitz
 
 from PIL import ImageOps
 from datasets import Features, Image, Value, builder
 from datasets.info import DatasetInfo
 from datasets.splits import Split, SplitGenerator
 from datasets.utils import logging
+import fitz
+from fitz.fitz import EmptyFileError
 from pdf2image.exceptions import PDFPageCountError
 from pdf2image.pdf2image import convert_from_path
 from pdfCropMargins import crop
 from regex import search
 
-from llm.chat import WizardLM
 from datikz.loaders import (
     arxiv,
-    gpt4,
     chatgpt,
+    gpt4,
     janosh_tikz,
     petarv_tikz,
     tex_stackexchange_com,
     texample_net,
     tikz_net,
 )
+from llm.chat import WizardLM
 
 logger = logging.get_logger("transformers")
 
@@ -44,7 +47,22 @@ def batched(iterable, n):
     while (batch := tuple(islice(it, n))):
         yield batch
 
-def tex2img(code, size=336, timeout=120, expand_to_square=True):
+# https://alexandra-zaharia.github.io/posts/kill-subprocess-and-its-children-on-timeout-python/)
+def run(*popenargs, timeout=None, **kwargs):
+    with Popen(*popenargs, start_new_session=True, **kwargs) as p:
+        try:
+            stdout, stderr = p.communicate(timeout=timeout)
+        except TimeoutExpired:
+            killpg(getpgid(p.pid), SIGKILL)
+            p.wait()
+            raise
+        except:
+            killpg(getpgid(p.pid), SIGKILL)
+            raise
+        if retcode := p.poll():
+            raise CalledProcessError(retcode, p.args, output=stdout, stderr=stderr)
+
+def tex2img(code, size=336, timeout=120, expand_to_square=True, rasterize=True):
     codelines = code.split("\n")
     # make sure we don't have page numbers in compiled pdf (for cropping)
     codelines.insert(1, r"{cmd}\AtBeginDocument{{{cmd}}}".format(cmd=r"\thispagestyle{empty}\pagestyle{empty}"))
@@ -55,7 +73,6 @@ def tex2img(code, size=336, timeout=120, expand_to_square=True):
             try:
                 run(
                     args=["latexmk", "-nobibtex", "-norc", "-interaction=nonstopmode", f"-{engine}", file],
-                    check=True,
                     cwd=tmpdirname,
                     stdout=DEVNULL,
                     stderr=DEVNULL,
@@ -91,9 +108,14 @@ def tex2img(code, size=336, timeout=120, expand_to_square=True):
                 raise ValueError("Provided code compiled to an empty image.")
 
             # save
-            image.save(imgByteArr:=BytesIO(), format="PNG")
+            if rasterize:
+                image.save(imgByteArr:=BytesIO(), format="PNG")
+                return imgByteArr.getvalue()
+            with open(cropname, "rb") as f:
+                return f.read()
 
-            return imgByteArr.getvalue()
+def texse_gen(xml_path): return tex_stackexchange_com.TeXExchangeParser(xml_path).load()
+
 
 class TikZConfig(builder.BuilderConfig):
     """BuilderConfig for TikZ."""
@@ -118,7 +140,7 @@ class TikZConfig(builder.BuilderConfig):
             "tikz.net": tikz_net.load,
             "pgfplots.net": tikz_net.load, # tikz.net downloader also works for this site
             "arxiv": arxiv.load,
-            "tex.stackexchange.com": lambda xml_path: tex_stackexchange_com.TeXExchangeParser(xml_path).load()
+            "tex.stackexchange.com": texse_gen
         }
 
 
@@ -236,7 +258,7 @@ class TikZ(builder.GeneratorBasedBuilder):
             while True:
                 try:
                     yield next(loader)
-                except (ValueError, PDFPageCountError, TimeoutExpired, CalledProcessError):
+                except (ValueError, PDFPageCountError, TimeoutExpired, CalledProcessError, EmptyFileError):
                     skipped += 1
                 except StopIteration:
                     break
