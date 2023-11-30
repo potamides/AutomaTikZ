@@ -7,13 +7,14 @@ and requires [ghostscript](https://www.ghostscript.com) and
 [poppler](https://poppler.freedesktop.org). Python dependencies can be
 installed as follows:
 ```sh
-    pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 Processing of [arXiv](https://arxiv.org) source files requires additional setup
 steps. First, you need to preprocess arXiv bulk data using
 [arxiv-latex-extract](https://github.com/potamides/arxiv-latex-extract). Then,
 set the `DATIKZ_ARXIV_FILES` environment variable to a colon-separated list of
-paths or archives created with arxiv-latex-extract.
+paths to the jsonl-files created with arxiv-latex-extract or archives
+containing them.
 
 ## Usage
 The whole dataset creation pipeline can be started by executing `main.py`. If
