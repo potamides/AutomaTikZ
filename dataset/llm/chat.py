@@ -30,7 +30,7 @@ WIZARD_PROMPT = (
 
 class ChatBot(ABC):
     def __init__(self, model, bs=1, prefix=None, **tokenizer_kwargs):
-        self.tokenizer = LlamaTokenizer.from_pretrained(model, padding_side="left", **tokenizer_kwargs),
+        self.tokenizer = LlamaTokenizer.from_pretrained(model, padding_side="left", **tokenizer_kwargs)
         self.prefix = prefix if prefix else ""
         self.model_name = model
         self.bs = bs
