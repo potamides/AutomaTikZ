@@ -69,9 +69,8 @@ Hub](https://huggingface.co/nllg):
 * LLaMA<sub>13b</sub>: [nllg/tikz-llama-13b](https://huggingface.co/nllg/tikz-llama-13b)
 
 ## Datasets
-While we provide official versions of our DaTi*k*Z dataset under
-[releases](https://github.com/potamides/AutomaTikZ/releases/latest) (you can
-find a description of each file [here](dataset#usage)), we had to remove a
+While we provide the official version of our DaTi*k*Z dataset on the [Hugging
+Face Hub](https://huggingface.co/datasets/nllg/datikz), we had to remove a
 considerable portion of Ti*k*Z drawings originating from
 [arXiv](https://arxiv.org), as the [arXiv non-exclusive
 license](https://arxiv.org/licenses/nonexclusive-distrib/1.0/license.html) does
