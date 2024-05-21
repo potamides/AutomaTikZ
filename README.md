@@ -76,8 +76,8 @@ considerable portion of Ti*k*Z drawings originating from
 [arXiv](https://arxiv.org), as the [arXiv non-exclusive
 license](https://arxiv.org/licenses/nonexclusive-distrib/1.0/license.html) does
 not permit redistribution. We do, however, release our [dataset creation
-scripts](dataset) and encourage anyone to recreate the full version of DaTi*k*Z
-themselves.
+scripts](https://github.com/potamides/DaTikZ) and encourage anyone to recreate
+the full version of DaTi*k*Z themselves.
 
 ## Acknowledgments
 The implementation of our CLiMA model is largely based on
