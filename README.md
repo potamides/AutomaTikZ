@@ -14,9 +14,6 @@ Ti*k*Z's human-oriented, high-level commands facilitate conditional language
 modeling with any large language model. AutomaTi*k*Z comes with a variety of
 tools for working with such models.
 
-> [!NOTE]
-> If you make use of this work please [cite](https://arxiv.org/bibtex/2310.00367) it.
-
 ## Installation
 The base version of AutomaTi*k*Z, which already supports inference and
 training, can be installed as regular Python package using
@@ -78,6 +75,21 @@ license](https://arxiv.org/licenses/nonexclusive-distrib/1.0/license.html) does
 not permit redistribution. We do, however, release our [dataset creation
 scripts](https://github.com/potamides/DaTikZ) and encourage anyone to recreate
 the full version of DaTi*k*Z themselves.
+
+## Citation
+
+If AutomaTi*k*Z has been beneficial for your research or applications, we
+kindly request you to acknowledge its use by citing it as follows:
+
+```bibtex
+@inproceedings{belouadi2024automatikz,
+  title={{AutomaTikZ}: Text-Guided Synthesis of Scientific Vector Graphics with {TikZ}},
+  author={Jonas Belouadi and Anne Lauscher and Steffen Eger},
+  booktitle={The Twelfth International Conference on Learning Representations},
+  year={2024},
+  url={https://openreview.net/forum?id=v3K5TVP8kZ}
+}
+```
 
 ## Acknowledgments
 The implementation of our CLiMA model is largely based on
