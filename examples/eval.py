@@ -105,7 +105,13 @@ def generate_and_repair(generator, **kwargs):
             _prev_first_error: the first error from the previous sampling attempt
             _retained_text: already generated tikz code to retain
         """
-        tikz = generator(caption=prompt, snippet=_snippet, **kwargs)
+        try:
+            tikz = generator(caption=prompt, snippet=_snippet, **kwargs)
+        except ValueError:
+            if _snippet != "": # input length might exceed max model length
+                tikz = generator(caption=prompt, **kwargs)
+            else:
+                raise
         # If there are errors in the code, try to fix them, unless we have
         # still got an image that isn't empty
         if try_fix and not tikz.has_content:
