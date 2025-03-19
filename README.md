@@ -14,6 +14,14 @@ Ti*k*Z's human-oriented, high-level commands facilitate conditional language
 modeling with any large language model. AutomaTi*k*Z comes with a variety of
 tools for working with such models.
 
+> [!TIP]
+> If you enjoy using AutomaTi*k*Z, be sure to check out our follow-up projects:
+> [DeTi*k*Zify](https://arxiv.org/abs/2405.15306), which adds support for
+> generating graphic programs based on raster images and hand-drawn sketches,
+> and [Ti*k*Zero](https://arxiv.org/abs/2503.11509), which considerably
+> improves text-conditioning. The code base is available
+> [here](https://github.com/potamides/DeTikZify).
+
 ## Installation
 The base version of AutomaTi*k*Z, which already supports inference and
 training, can be installed as regular Python package using
